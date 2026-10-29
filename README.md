@@ -7,44 +7,46 @@ Tablero de **inversión, facturación y MER por cliente** de Elevation Media.
 - Colores: verde ≥ 6, ámbar 3–6, rojo < 3.
 - Sección aparte de **Generación de leads** (Vanskap, FPT Egresados, Goar): inversión, mensajes recibidos y costo por mensaje.
 - Detalle por día al tocar cada cliente.
+- Acceso solo con email **@mkt-elevation.com** (link mágico por mail).
 
-## Cómo funciona
+## Arquitectura
 
-`index.html` es una página única (HTML + CSS + JS, sin dependencias de build).
-Los datos se consultan en vivo a **Master Metrics** (Meta Ads, Tiendanube y WooCommerce).
-
-> **Importante:** hoy la página obtiene los datos a través del runtime de Artifacts de claude.ai
-> (`window.claude.use("mcp")` → conector *Master Metrics*, herramienta `get_data`).
-> Abierta fuera de claude.ai (por ejemplo como archivo local o en un hosting propio) muestra el
-> mensaje "Esta vista no puede consultar Master Metrics".
-> Para servirla de forma independiente hay que reemplazar la función `q()` por llamadas a un
-> backend propio que consulte la API de Master Metrics con una API key guardada en el servidor.
-
-## Estructura
+```
+Master Metrics (Meta, Tiendanube, WooCommerce)
+        │  tarea programada diaria de Claude (conectores Master Metrics + Supabase)
+        ▼
+Supabase (Postgres) ── RLS: solo usuarios @mkt-elevation.com verificados
+        │  supabase-js con la publishable key
+        ▼
+Vercel (index.html estático) ── login por link mágico
+```
 
 | Archivo | Qué contiene |
 |---|---|
-| `index.html` | El tablero completo. |
+| `index.html` | Tablero web: login + lectura de Supabase. |
+| `config.js` | URL de Supabase, publishable key (pública por diseño) y dominio permitido. |
+| `vercel.json` | Headers de seguridad. |
+| `claude-artifact/index.html` | Versión anterior que corre dentro de claude.ai consultando Master Metrics en vivo. |
 | `docs/clientes.md` | Mapeo de cada cliente a su cuenta de Meta y su tienda. |
 | `docs/reporte-semanal.md` | Prompt de la tarea programada "Cuentas en rojo" de los lunes. |
 
+## Base de datos (Supabase, proyecto "Merview")
+
+| Tabla / vista | Uso |
+|---|---|
+| `clients` | Lista de clientes: `kind` (`ecommerce`, `leads`, `sin_tienda`), `meta_accounts`, `tn_stores`, `woo_shops`, `active`. |
+| `settings` | `usd_ars` = tipo de cambio para cuentas en USD. |
+| `meta_daily` | Inversión y mensajes por cuenta y día. |
+| `store_daily` | Facturación por tienda y día. |
+| `client_daily` (vista) | Inversión en ARS, mensajes y facturación por cliente y día. |
+| `sync_runs` | Registro de cada sincronización. |
+| `source_errors` | Cuentas/tiendas que Master Metrics no pudo leer. |
+
+La carga se hace con la función `merview_ingest(fuente, mes, ids, filas, cuentas_usd)`,
+que solo puede ejecutar el rol de servicio (no está expuesta a usuarios).
+
 ## Mantener la lista de clientes
 
-La configuración vive en la constante `CLIENTS` de `index.html`:
-
-```js
-{n:"Nombre", meta:["<id cuenta Meta>"], tn:["<id tienda Tiendanube>"]}   // e-commerce Tiendanube
-{n:"Nombre", meta:["<id>"], woo:["dominio.com"]}                          // e-commerce WooCommerce
-{n:"Nombre", meta:["<id>"], leads:true}                                   // generación de leads
-{n:"Nombre", meta:["<id>"]}                                               // sin tienda vinculada
-```
-
-- Alta de cliente: agregar una línea.
-- Baja de cliente: borrar su línea.
-- Cuentas de Meta en USD: listarlas en `USD_ACCOUNTS`; se convierten con el dólar que se carga en la página.
-
-## Comportamiento ante errores
-
-Si Master Metrics pierde acceso a una cuenta de Meta o a una tienda, la página aísla esa cuenta
-(divide la consulta en lotes hasta encontrarla), muestra un aviso con el cliente afectado y lo
-excluye del MER global. El resto de los clientes se sigue mostrando normalmente.
+Alta, baja o cambio de cuentas: editar la tabla `clients` en Supabase (Table Editor).
+- Baja: poner `active = false`.
+- Cuentas de Meta en USD: pasarlas en el parámetro `p_usd` de la carga; se convierten con `settings.usd_ars`.

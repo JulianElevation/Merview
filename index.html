@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Inversión, facturación y MER por cliente · Elevation</title>
+<meta name="robots" content="noindex,nofollow">
+<title>MER View · Elevation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
@@ -81,127 +82,89 @@ h2.sec{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;font-wei
   .periods button{flex:1}
 }
 @media (prefers-reduced-motion:no-preference){ .gauge i{transition:width .35s ease} }
+.login{max-width:440px;margin:12vh auto 0}
+.loginform{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+.ctl.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);font-weight:500;cursor:pointer}
+#logout{padding:4px 10px;font-size:13px;cursor:pointer}
+[hidden]{display:none!important}
 </style>
+
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <div>
-      <h1>Inversión y facturación por cliente</h1>
-      <p class="sub" id="range">Clientes con inversión en Meta en los últimos 30 días</p>
-    </div>
-    <div class="periods" role="group" aria-label="Período">
-      <button data-p="today" aria-pressed="false">Hoy</button>
-      <button data-p="yesterday" aria-pressed="false">Ayer</button>
-      <button data-p="7d" aria-pressed="false">Últimos 7 días</button>
-      <button data-p="month" aria-pressed="true">Este mes</button>
-    </div>
-  </header>
-
-  <section class="totals" aria-label="Totales del período">
-    <div class="tot"><span>Inversión Meta</span><b id="tInv">—</b><small id="tInvN">&nbsp;</small></div>
-    <div class="tot"><span>Facturación tiendas</span><b id="tFac">—</b><small>Tiendanube + WooCommerce</small></div>
-    <div class="tot"><span>MER global</span><b id="tMer">—</b><small>Solo clientes con tienda vinculada</small></div>
+  <!-- LOGIN -->
+  <section id="login" class="login" hidden>
+    <h1>MER View</h1>
+    <p class="sub">Ingresá con tu mail de Elevation. Te mandamos un link para entrar.</p>
+    <form id="loginForm" class="loginform">
+      <input class="ctl" id="email" type="email" required placeholder="nombre@mkt-elevation.com" autocomplete="email" aria-label="Mail de Elevation">
+      <button class="ctl primary" type="submit">Enviar link de acceso</button>
+    </form>
+    <div class="status" id="loginStatus" role="status"></div>
   </section>
 
-  <div class="bar">
-    <input class="ctl" id="q" type="search" placeholder="Buscar cliente" aria-label="Buscar cliente">
-    <label class="fx">Dólar para cuentas en USD <input class="ctl" id="fx" type="number" min="1" step="1" value="1500"></label>
-    <button class="ctl" id="reload" type="button">Actualizar</button>
-  </div>
-  <div class="status" id="status" role="status"></div>
+  <!-- TABLERO -->
+  <section id="app" hidden>
+    <header>
+      <div>
+        <h1>Inversión y facturación por cliente</h1>
+        <p class="sub" id="range">Clientes con inversión en Meta en los últimos 30 días</p>
+      </div>
+      <div class="periods" role="group" aria-label="Período">
+        <button data-p="today" aria-pressed="false">Hoy</button>
+        <button data-p="yesterday" aria-pressed="false">Ayer</button>
+        <button data-p="7d" aria-pressed="false">Últimos 7 días</button>
+        <button data-p="month" aria-pressed="true">Este mes</button>
+      </div>
+    </header>
 
-  <div class="tablebox">
-    <table>
-      <thead><tr>
-        <th><button data-k="name">Cliente</button></th>
-        <th><button data-k="inv" data-dir="↓">Inversión</button></th>
-        <th><button data-k="fac">Facturación</button></th>
-        <th><button data-k="mer">MER</button></th>
-      </tr></thead>
-      <tbody id="tb"></tbody>
-      <tfoot id="tf"></tfoot>
-    </table>
-  </div>
-  <p class="legend">MER = Facturación ÷ Inversión. Verde ≥ 6, ámbar 3–6, rojo &lt; 3. Tocá un cliente para ver el detalle por día. La inversión de Meta del día en curso se completa con demora.</p>
+    <section class="totals" aria-label="Totales del período">
+      <div class="tot"><span>Inversión Meta</span><b id="tInv">—</b><small id="tInvN">&nbsp;</small></div>
+      <div class="tot"><span>Facturación tiendas</span><b id="tFac">—</b><small>Tiendanube + WooCommerce</small></div>
+      <div class="tot"><span>MER global</span><b id="tMer">—</b><small>Solo clientes con tienda vinculada</small></div>
+    </section>
 
-  <h2 class="sec">Generación de leads</h2>
-  <p class="sub2">Clientes que venden por mensajes: se mide inversión y consultas recibidas, no MER.</p>
-  <div class="tablebox">
-    <table>
-      <thead><tr><th>Cliente</th><th>Inversión</th><th>Mensajes</th><th>Costo por mensaje</th></tr></thead>
-      <tbody id="tbL"></tbody>
-      <tfoot id="tfL"></tfoot>
-    </table>
-  </div>
-  <p class="legend">Mensajes = conversaciones por mensaje iniciadas desde los anuncios de Meta (WhatsApp, Instagram y Messenger). Tocá un cliente para ver el detalle por día.</p>
+    <div class="bar">
+      <input class="ctl" id="q" type="search" placeholder="Buscar cliente" aria-label="Buscar cliente">
+      <span class="fx" id="meta"></span>
+      <span class="fx"><span id="who"></span> <button class="ctl" id="logout" type="button">Salir</button></span>
+    </div>
+    <div class="status" id="status" role="status"></div>
+
+    <div class="tablebox">
+      <table>
+        <thead><tr>
+          <th><button data-k="name">Cliente</button></th>
+          <th><button data-k="inv" data-dir="↓">Inversión</button></th>
+          <th><button data-k="fac">Facturación</button></th>
+          <th><button data-k="mer">MER</button></th>
+        </tr></thead>
+        <tbody id="tb"></tbody>
+        <tfoot id="tf"></tfoot>
+      </table>
+    </div>
+    <p class="legend">MER = Facturación ÷ Inversión. Verde ≥ 6, ámbar 3–6, rojo &lt; 3. Tocá un cliente para ver el detalle por día. Los datos se actualizan una vez por día; el día en curso puede estar incompleto.</p>
+
+    <h2 class="sec">Generación de leads</h2>
+    <p class="sub2">Clientes que venden por mensajes: se mide inversión y consultas recibidas, no MER.</p>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>Cliente</th><th>Inversión</th><th>Mensajes</th><th>Costo por mensaje</th></tr></thead>
+        <tbody id="tbL"></tbody>
+        <tfoot id="tfL"></tfoot>
+      </table>
+    </div>
+    <p class="legend">Mensajes = conversaciones por mensaje iniciadas desde los anuncios de Meta (WhatsApp, Instagram y Messenger).</p>
+  </section>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
 <script>
-/* ---------- Configuración: cuenta publicitaria de Meta ↔ tienda ---------- */
-const USD_ACCOUNTS = new Set(["2176038473135026","835064156159106","1024749676680864","917753601243330"]);
-const CLIENTS = [
-  {n:"Janis", meta:["524043503927579"], tn:["1413679"]},
-  {n:"Llovizna", meta:["2543743082630129"], tn:["893964"]},
-  {n:"Prussia", meta:["656730014517448"], tn:["806650"]},
-  {n:"Taverniti", meta:["1547402957024995"], tn:["7090253"]},
-  {n:"Vita", meta:["761332184809461"], tn:["1350594"]},
-  {n:"Narrow Jeans", meta:["592246411928255"], tn:["1552353"]},
-  {n:"Hugs Jeans", meta:["327323261369182"], tn:["6373994"]},
-  {n:"Vesna (nuevo)", meta:["1942226896134769"], tn:["6867643"]},
-  {n:"Vesna Vintage", meta:["184066895646772"], tn:["7570026"]},
-  {n:"Amodil", meta:["313413379735834"], tn:["7351378"]},
-  {n:"EG Jeans", meta:["1973127683473"], tn:["2347120"]},
-  {n:"Botti Jeans", meta:["632245228295533"], tn:["2393027"]},
-  {n:"Dupan", meta:["5256267874450189"], tn:["2331571"]},
-  {n:"Notfancy", meta:["5649094995195714"], tn:["5671332"]},
-  {n:"Cabanna", meta:["1677698302440528"], tn:["1304875"]},
-  {n:"Santos (minorista)", meta:["208068180034035"], tn:["1322371"]},
-  {n:"Santos (mayorista)", meta:["885722431247917"], tn:["3087199"]},
-  {n:"Vanskap", meta:["742528791951045"], leads:true},
-  {n:"Andino Outfitters", meta:["1192388741706208"], tn:["2635418"]},
-  {n:"Blessclo / Blesko", meta:["879947793561104"], tn:["3077405"]},
-  {n:"Morin", meta:["1225309725618452"], tn:["790525"]},
-  {n:"Cambio de Aires", meta:["484234344211831"], tn:["4987679"]},
-  {n:"Pericles Mayorista", meta:["410952084106257"], tn:["1921911"]},
-  {n:"Guilty Berlin", meta:["971735200923398"], tn:["2222533"]},
-  {n:"Kolors Odinroxs", meta:["733634542969466"], tn:["6077318"]},
-  {n:"Lizze", meta:["1847123736161292"], tn:["6836514"]},
-  {n:"Aurelia", meta:["2371211536259102"], tn:["796276"]},
-  {n:"Toy Store", meta:["487330832404410"], tn:["6074976"]},
-  {n:"Infinity Import", meta:["9825325374170095"], tn:["6127639"]},
-  {n:"Stark", meta:["1803516134338291"], tn:["7938718"]},
-  {n:"Wache", meta:["1277792076140188"], tn:["7401624"]},
-  {n:"Mibi", meta:["1279200813106238"], tn:["5008271"]},
-  {n:"New Pin", meta:["947561157058854"], tn:["4420439"]},
-  {n:"Minnakazzira", meta:["1832081317460324"], tn:["7350937"]},
-  {n:"Lala Fe", meta:["535161368973435"], tn:["1926834"]},
-  {n:"YOVA", meta:["411071704963617"], tn:["4119262"]},
-  {n:"Signature 23", meta:["2176038473135026"], tn:["7395672"]},
-  {n:"Dhermafy", meta:["917753601243330"], tn:["7483829"]},
-  {n:"Innocenti", meta:["1138770228113231"], tn:["4726620"]},
-  {n:"Paz Cornú", meta:["1456910082823317"], tn:["353188"]},
-  {n:"Doble B", meta:["1563831787080588"], tn:["5081136"]},
-  {n:"Posta", meta:["1019867890887967"], tn:["6963967"]},
-  {n:"Cosita Linda", meta:["235682250"], tn:["790330"]},
-  {n:"Nana", meta:["312322011"], woo:["www.nanabsas.com"]},
-  {n:"Burzaco", meta:["1319019323712008"], woo:["burzacoind.com"]},
-  {n:"Lamode", meta:["1015159984074486"]},
-  {n:"Dubai Bikinis", meta:["416166144622390"]},
-  {n:"Celeste Gonzalez (MUD)", meta:["3512534119054694"], tn:["287624"]},
-  {n:"Carla Canchero", meta:["28442709012083225"], tn:["3019907"]},
-  {n:"FPT Egresados", meta:["2745113812546726"], leads:true},
-  {n:"Not Fail / Maiamee", meta:["425353530595543"], tn:["5383844"]},
-  {n:"Goar", meta:["785069185794990"], leads:true},
-  {n:"CoandCo", meta:["1141845354484158"]},
-  {n:"Cotize", meta:["1024749676680864"]}
-];
-const SERVER = "Master Metrics", TOOL = "get_data";
-const ALL_META = [...new Set(CLIENTS.flatMap(c=>c.meta||[]))];
-const ALL_TN = [...new Set(CLIENTS.flatMap(c=>c.tn||[]))];
-const LEAD_META = [...new Set(CLIENTS.filter(c=>c.leads).flatMap(c=>c.meta))];
-const MSG = "conversion_onsite_conversion.messaging_conversation_started_7d";
-const ALL_WOO = [...new Set(CLIENTS.flatMap(c=>c.woo||[]))];
+/* ---------- Supabase ---------- */
+const CFG = window.MERVIEW_CONFIG || {};
+const DOMAIN = (CFG.allowedDomain || "mkt-elevation.com").toLowerCase();
+const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
 
 /* ---------- Fechas en hora de Buenos Aires ---------- */
 function todayBA(){
@@ -225,187 +188,144 @@ const money = v => "$ " + nf0.format(Math.round(v));
 const merTxt = v => v==null||!isFinite(v) ? "—" : v.toFixed(2).replace(".",",");
 const merCls = v => v==null||!isFinite(v) ? "na" : v>=6?"g":v>=3?"m":"r";
 const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-
-/* ---------- Estado ---------- */
-let mcp = null, period = "month", sortK = "inv", sortDir = -1, openClient = null;
-let activeMeta = null;        // Set de cuentas con gasto en 30 días
-let rows = [];
-let leadRows = [], openLead = null;                // filas calculadas del período
-const statusEl = document.getElementById("status");
-function setStatus(msg, err){ statusEl.textContent = msg||""; statusEl.className = "status"+(err?" err":""); }
-
-function errMsg(e){
-  const c = e && e.code;
-  if(c==="needs_reauth") return "La conexión con Master Metrics venció. Reconectala en claude.ai → Configuración → Conectores y tocá Actualizar.";
-  if(c==="server_not_connected"||c==="selection_required") return "Master Metrics no está conectado para esta cuenta. Agregalo en claude.ai → Configuración → Conectores.";
-  if(c==="not_in_manifest"||c==="consent_required") return "No se dio permiso a esta página para usar Master Metrics. Tocá Actualizar para volver a pedirlo.";
-  if(c==="blocked_by_policy"||c==="approval_required") return "La política de la organización bloquea esta consulta a Master Metrics.";
-  if(c==="server_unavailable") return "Master Metrics no respondió a tiempo. Tocá Actualizar en unos segundos.";
-  if(c==="tool_error") return "Master Metrics devolvió un error: " + (e.message||"sin detalle");
-  if(c==="not_granted"||c==="capability_disabled"||c==="capability_removed") return "Esta vista no puede consultar conectores. Abrí la página desde claude.ai.";
-  return "No se pudieron traer los datos (" + (c||"error") + "). Tocá Actualizar.";
-}
-
-async function q(input, fresh){
-  const call = () => mcp.callTool(SERVER, TOOL, input, {cache: fresh ? {refresh:true, staleTime:0, gcTime:300000} : {staleTime:120000, gcTime:300000}});
-  let res;
-  try { res = await call(); }
-  catch(e){
-    if(e && e.retryable){ await new Promise(r=>setTimeout(r,(e.retryAfterMs||1200)+Math.random()*800)); res = await call(); }
-    else throw e;
-  }
-  if(res && res.isError){ throw {code:"tool_error", message:String(res.payload||"").slice(0,160)}; }
-  let p = res.payload;
-  if(typeof p === "string"){ try{ p = JSON.parse(p); }catch(_){ throw {code:"tool_error", message:p.slice(0,160)}; } }
-  if(p && !Array.isArray(p) && (p.error||p.message)) throw {code:"tool_error", message:String(p.error||p.message).slice(0,160)};
-  if(!Array.isArray(p)) return [];
-  return p;
-}
 const num = v => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
 
-/* Si una cuenta perdió permisos, Master Metrics rechaza toda la consulta.
-   Partimos el lote en mitades hasta aislar las cuentas con error y seguimos con el resto. */
-const failedMeta = new Map();   // cuenta de Meta -> motivo
-const failedStore = new Map();  // tienda -> motivo
-async function qSplit(input, fresh, failed){
-  const acc = input.accounts.filter(id=>!failed.has(id));
-  if(!acc.length) return [];
-  try { return await q({...input, accounts:acc}, fresh); }
-  catch(e){
-    if(!e || e.code!=="tool_error") throw e;
-    if(acc.length===1){ failed.set(acc[0], e.message||"error"); return []; }
-    const mid = Math.ceil(acc.length/2);
-    const [a,b] = await Promise.all([
-      qSplit({...input, accounts:acc.slice(0,mid)}, fresh, failed),
-      qSplit({...input, accounts:acc.slice(mid)}, fresh, failed)
-    ]);
-    return a.concat(b);
-  }
-}
-const qMeta = (input, fresh) => qSplit(input, fresh, failedMeta);
-const qStore = (input, fresh) => qSplit(input, fresh, failedStore);
+/* ---------- Estado ---------- */
+let period = "month", sortK = "inv", sortDir = -1, openClient = null, openLead = null;
+let clients = [], daily = [], rows = [], leadRows = [], errors = [], lastSync = null, fxRate = null;
+const $ = id => document.getElementById(id);
+function setStatus(msg, err){ $("status").textContent = msg||""; $("status").className = "status"+(err?" err":""); }
 
-async function loadActive(fresh){
-  const t = todayBA();
-  failedMeta.clear(); failedStore.clear();
-  const r = await qMeta({source:"meta", accounts:ALL_META, breakdowns:["account_id"], metrics:["spend"], since:iso(addDays(t,-30)), until:iso(t)}, fresh);
-  activeMeta = new Set(r.filter(x=>num(x[1])>0).map(x=>String(x[0])));
-}
+/* ---------- Login ---------- */
+$("loginForm").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const email = $("email").value.trim().toLowerCase();
+  const st = $("loginStatus");
+  if(!email.endsWith("@"+DOMAIN)){ st.textContent = `Solo se puede entrar con un mail @${DOMAIN}.`; st.className="status err"; return; }
+  st.textContent = "Enviando link…"; st.className="status";
+  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.origin + location.pathname } });
+  if(error){ st.textContent = "No se pudo enviar el link: " + error.message; st.className="status err"; return; }
+  st.textContent = `Listo. Revisá ${email} y tocá el link para entrar.`;
+});
+$("logout").addEventListener("click", async ()=>{ await sb.auth.signOut(); location.reload(); });
 
-async function loadPeriod(fresh){
-  const {since, until} = rangeFor(period);
-  document.getElementById("range").textContent =
-    `${since===until ? fmtDate(since) : fmtDate(since)+" al "+fmtDate(until)} · clientes con inversión en Meta en los últimos 30 días`;
-  const jobs = [
-    qMeta({source:"meta", accounts:ALL_META, breakdowns:["account_id"], metrics:["spend"], since, until}, fresh),
-    ALL_TN.length ? qStore({source:"tiendanube", accounts:ALL_TN, breakdowns:["tn_common_store_id"], metrics:["tn_orders_total_billing"], since, until}, fresh) : Promise.resolve([]),
-    ALL_WOO.length ? qStore({source:"woocommerce", accounts:ALL_WOO, breakdowns:["woocommerce_shop_id"], metrics:["woocommerce_orders_total"], since, until}, fresh) : Promise.resolve([]),
-    LEAD_META.length ? qMeta({source:"meta", accounts:LEAD_META, breakdowns:["account_id","ad_account"], metrics:["spend", MSG], since, until}, fresh) : Promise.resolve([])
-  ];
-  const [m, tn, woo, ld] = await Promise.allSettled(jobs);
-  if(m.status==="rejected") throw m.reason;
-  const spend = new Map(m.value.map(x=>[String(x[0]), num(x[1])]));
-  const rev = new Map();
-  const partial = [];
-  if(tn.status==="fulfilled") tn.value.forEach(x=>rev.set("tn:"+x[0], num(x[1]))); else partial.push("Tiendanube");
-  if(woo.status==="fulfilled") woo.value.forEach(x=>rev.set("woo:"+x[0], num(x[1]))); else partial.push("WooCommerce");
-  const fx = Math.max(1, num(document.getElementById("fx").value)||1);
-  /* Leads: Master Metrics devuelve el gasto en filas con account_id y los mensajes en filas
-     sin account_id, identificadas por el nombre de la cuenta. Las unimos por nombre. */
-  const lSpend = new Map(), lMsgs = new Map(), idByName = new Map();
-  if(ld.status==="fulfilled"){
-    ld.value.forEach(x=>{ if(x[0]!=null){ idByName.set(String(x[1]), String(x[0])); lSpend.set(String(x[0]), (lSpend.get(String(x[0]))||0)+num(x[2])); } });
-    ld.value.forEach(x=>{ const id = x[0]!=null ? String(x[0]) : idByName.get(String(x[1])); if(id) lMsgs.set(id, (lMsgs.get(id)||0)+num(x[3])); });
-  } else partial.push("los mensajes de Meta");
-  leadRows = CLIENTS.filter(c=>c.leads && c.meta.some(id=>activeMeta.has(id) || failedMeta.has(id))).map(c=>{
-    const inv = c.meta.reduce((s,id)=>s+(lSpend.get(id)||0),0);
-    const msgs = c.meta.reduce((s,id)=>s+(lMsgs.get(id)||0),0);
-    return {c, name:c.n, inv, msgs, cpm: msgs>0 ? inv/msgs : null, noAccess: c.meta.every(id=>failedMeta.has(id))};
-  });
-  rows = CLIENTS.filter(c=>!c.leads && c.meta.some(id=>activeMeta.has(id) || failedMeta.has(id))).map(c=>{
-    const inv = c.meta.reduce((s,id)=>s + (spend.get(id)||0) * (USD_ACCOUNTS.has(id)?fx:1), 0);
-    const hasStore = (c.tn&&c.tn.length)||(c.woo&&c.woo.length);
-    const fac = hasStore ? (c.tn||[]).reduce((s,id)=>s+(rev.get("tn:"+id)||0),0) + (c.woo||[]).reduce((s,id)=>s+(rev.get("woo:"+id)||0),0) : null;
-    const usd = c.meta.some(id=>USD_ACCOUNTS.has(id));
-    const noAccess = c.meta.every(id=>failedMeta.has(id));
-    const storeDown = [...(c.tn||[]),...(c.woo||[])].some(id=>failedStore.has(id));
-    return {c, name:c.n, inv, fac: storeDown ? null : fac, mer: fac!=null && inv>0 && !noAccess && !storeDown ? fac/inv : null, usd, hasStore:!!hasStore, noAccess, storeDown};
-  });
-  render();
-  const msgs = [];
-  if(partial.length) msgs.push(`No se pudo leer ${partial.join(" y ")}: esas facturaciones aparecen en cero.`);
-  if(failedMeta.size){
-    const names = CLIENTS.filter(c=>c.meta.some(id=>failedMeta.has(id))).map(c=>c.n);
-    msgs.push(`Master Metrics perdió el acceso a Meta de: ${names.join(", ")}. Reconectalas en Master Metrics; mientras tanto se muestran sin inversión.`);
+async function boot(){
+  const { data:{ session } } = await sb.auth.getSession();
+  const email = session?.user?.email?.toLowerCase() || "";
+  if(!session){ $("login").hidden = false; $("app").hidden = true; return; }
+  if(!email.endsWith("@"+DOMAIN)){
+    await sb.auth.signOut();
+    $("login").hidden = false; $("app").hidden = true;
+    $("loginStatus").textContent = `La cuenta ${email} no tiene acceso. Entrá con tu mail @${DOMAIN}.`; $("loginStatus").className="status err";
+    return;
   }
-  if(failedStore.size){
-    const names = CLIENTS.filter(c=>[...(c.tn||[]),...(c.woo||[])].some(id=>failedStore.has(id))).map(c=>c.n);
-    msgs.push(`Master Metrics perdió el acceso a la tienda de: ${names.join(", ")}. Reconectala en Master Metrics; mientras tanto se muestra sin facturación.`);
-  }
-  setStatus(msgs.join(" "), !!msgs.length);
+  $("login").hidden = true; $("app").hidden = false;
+  $("who").textContent = email;
+  await loadBase();
+  await refresh();
+}
+sb.auth.onAuthStateChange((ev)=>{ if(ev==="SIGNED_IN" && $("app").hidden) boot(); });
+
+/* ---------- Datos ---------- */
+async function loadBase(){
+  const [c, s, er, sr] = await Promise.all([
+    sb.from("clients").select("*").eq("active", true),
+    sb.from("settings").select("*"),
+    sb.from("source_errors").select("*"),
+    sb.from("sync_runs").select("*").order("ran_at",{ascending:false}).limit(1)
+  ]);
+  if(c.error) throw c.error;
+  clients = c.data || [];
+  fxRate = (s.data||[]).find(x=>x.key==="usd_ars")?.value || null;
+  errors = er.data || [];
+  lastSync = (sr.data||[])[0] || null;
+  const parts = [];
+  if(lastSync) parts.push("Datos actualizados: " + new Date(lastSync.ran_at).toLocaleString("es-AR",{timeZone:"America/Argentina/Buenos_Aires",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
+  if(fxRate) parts.push(`Dólar para cuentas en USD: $${fxRate}`);
+  $("meta").textContent = parts.join(" · ");
 }
 
+async function fetchDaily(since, until){
+  const out = []; let from = 0; const page = 1000;
+  for(;;){
+    const { data, error } = await sb.from("client_daily").select("client_id,day,spend_ars,messages,revenue").gte("day", since).lte("day", until).range(from, from+page-1);
+    if(error) throw error;
+    out.push(...data);
+    if(data.length < page) break;
+    from += page;
+  }
+  return out;
+}
+
+async function refresh(){
+  skeleton(); setStatus("Cargando…");
+  try{
+    const {since, until} = rangeFor(period);
+    const t = todayBA(), since30 = iso(addDays(t,-30));
+    const start = since < since30 ? since : since30;
+    daily = await fetchDaily(start, iso(t));
+    $("range").textContent = `${since===until ? fmtDate(since) : fmtDate(since)+" al "+fmtDate(until)} · clientes con inversión en Meta en los últimos 30 días`;
+
+    const active = new Set(daily.filter(d=>d.day>=since30 && num(d.spend_ars)>0).map(d=>d.client_id));
+    const inRange = daily.filter(d=>d.day>=since && d.day<=until);
+    const agg = new Map();
+    inRange.forEach(d=>{ const a = agg.get(d.client_id)||{inv:0,fac:0,msgs:0}; a.inv+=num(d.spend_ars); a.fac+=num(d.revenue); a.msgs+=num(d.messages); agg.set(d.client_id,a); });
+
+    const errIds = new Set(errors.map(e=>e.account_id));
+    const live = clients.filter(c=>active.has(c.id));
+    rows = live.filter(c=>c.kind!=="leads").map(c=>{
+      const a = agg.get(c.id)||{inv:0,fac:0};
+      const hasStore = c.kind==="ecommerce";
+      const storeDown = [...c.tn_stores, ...c.woo_shops].some(id=>errIds.has(id));
+      const noAccess = c.meta_accounts.length && c.meta_accounts.every(id=>errIds.has(id));
+      return {c, name:c.name, inv:a.inv, fac: hasStore && !storeDown ? a.fac : null,
+              mer: hasStore && !storeDown && !noAccess && a.inv>0 ? a.fac/a.inv : null,
+              hasStore, storeDown, noAccess};
+    });
+    leadRows = live.filter(c=>c.kind==="leads").map(c=>{
+      const a = agg.get(c.id)||{inv:0,msgs:0};
+      return {c, name:c.name, inv:a.inv, msgs:a.msgs, cpm: a.msgs>0 ? a.inv/a.msgs : null};
+    });
+    render();
+    const msgs = [];
+    if(errors.length){
+      const names = clients.filter(c=>[...c.meta_accounts,...c.tn_stores,...c.woo_shops].some(id=>errIds.has(id))).map(c=>c.name);
+      if(names.length) msgs.push(`Sin acceso en Master Metrics: ${names.join(", ")}. Reconectalas en Master Metrics.`);
+    }
+    setStatus(msgs.join(" "), !!msgs.length);
+  }catch(e){
+    rows=[]; leadRows=[];
+    $("tb").innerHTML = `<tr><td colspan="4" class="empty">No se pudieron cargar los datos (${esc(e.message||e)}). Recargá la página.</td></tr>`;
+    $("tbL").innerHTML = ""; $("tf").innerHTML=""; $("tfL").innerHTML="";
+    setStatus("");
+  }
+}
+
+/* ---------- Render ---------- */
 function render(){
-  const term = document.getElementById("q").value.trim().toLowerCase();
+  const term = $("q").value.trim().toLowerCase();
   let list = rows.filter(r=>!term || r.name.toLowerCase().includes(term));
   list.sort((a,b)=>{
-    const va = a[sortK], vb = b[sortK];
     if(sortK==="name") return sortDir * a.name.localeCompare(b.name,"es");
-    const na = va==null?-Infinity:va, nb = vb==null?-Infinity:vb;
+    const na = a[sortK]==null?-Infinity:a[sortK], nb = b[sortK]==null?-Infinity:b[sortK];
     return sortDir * (na-nb);
   });
-  const tb = document.getElementById("tb");
-  if(!list.length){ tb.innerHTML = `<tr><td colspan="4" class="empty">${rows.length ? "Ningún cliente coincide con la búsqueda." : "No hay clientes con inversión en los últimos 30 días."}</td></tr>`; document.getElementById("tf").innerHTML=""; setTotals(list); return; }
+  const tb = $("tb");
+  if(!list.length){ tb.innerHTML = `<tr><td colspan="4" class="empty">${rows.length ? "Ningún cliente coincide con la búsqueda." : "No hay datos para este período."}</td></tr>`; $("tf").innerHTML=""; setTotals(list); renderLeads(term); return; }
   tb.innerHTML = list.map(r=>{
     const w = r.mer==null ? 0 : Math.min(100, r.mer/12*100);
-    const note = r.noAccess ? "Sin acceso a Meta en Master Metrics" : r.storeDown ? "Sin acceso a la tienda en Master Metrics" : !r.hasStore ? "Sin tienda vinculada" : r.usd ? "Incluye cuenta en USD" : "";
+    const note = r.noAccess ? "Sin acceso a Meta en Master Metrics" : r.storeDown ? "Sin acceso a la tienda en Master Metrics" : !r.hasStore ? "Sin tienda vinculada" : "";
     const mcls = merCls(r.mer);
-    const row = `<tr class="row" tabindex="0" data-n="${esc(r.name)}" aria-expanded="${openClient===r.name}">
+    const row = `<tr class="row" tabindex="0" data-n="${esc(r.c.id)}" aria-expanded="${openClient===r.c.id}">
       <td class="name"><b>${esc(r.name)}</b>${note?`<small>${note}</small>`:""}</td>
       <td>${money(r.inv)}</td>
       <td>${r.fac==null?'<span class="na">—</span>':money(r.fac)}</td>
       <td><div class="mer"><div class="gauge" aria-hidden="true"><i class="${mcls}" style="width:${w}%;background:currentColor"></i></div><span class="merv ${mcls}">${merTxt(r.mer)}</span></div></td>
     </tr>`;
-    const det = openClient===r.name ? `<tr class="detail"><td colspan="4"><div class="det" id="det">Cargando detalle…</div></td></tr>` : "";
-    return row+det;
+    return row + (openClient===r.c.id ? `<tr class="detail"><td colspan="4"><div class="det">${detailHtml(r, false)}</div></td></tr>` : "");
   }).join("");
   setTotals(list);
-  if(openClient && list.some(r=>r.name===openClient)) loadDetail(list.find(r=>r.name===openClient));
   renderLeads(term);
-}
-
-function renderLeads(term){
-  const tb = document.getElementById("tbL"), tf = document.getElementById("tfL");
-  const list = leadRows.filter(r=>!term || r.name.toLowerCase().includes(term)).sort((a,b)=>b.inv-a.inv);
-  if(!list.length){ tb.innerHTML = `<tr><td colspan="4" class="empty">${leadRows.length ? "Ningún cliente coincide con la búsqueda." : "No hay clientes de leads con inversión en los últimos 30 días."}</td></tr>`; tf.innerHTML=""; return; }
-  tb.innerHTML = list.map(r=>{
-    const row = `<tr class="row" tabindex="0" data-n="${esc(r.name)}" aria-expanded="${openLead===r.name}">
-      <td class="name"><b>${esc(r.name)}</b>${r.noAccess?"<small>Sin acceso a Meta en Master Metrics</small>":""}</td>
-      <td>${money(r.inv)}</td>
-      <td>${nf0.format(r.msgs)}</td>
-      <td>${r.cpm==null?'<span class="na">—</span>':money(r.cpm)}</td>
-    </tr>`;
-    const det = openLead===r.name ? `<tr class="detail"><td colspan="4"><div class="det" id="detL">Cargando detalle…</div></td></tr>` : "";
-    return row+det;
-  }).join("");
-  const inv = list.reduce((s,r)=>s+r.inv,0), msgs = list.reduce((s,r)=>s+r.msgs,0);
-  tf.innerHTML = `<tr><td>Total</td><td>${money(inv)}</td><td>${nf0.format(msgs)}</td><td>${msgs>0?money(inv/msgs):"—"}</td></tr>`;
-  if(openLead && list.some(r=>r.name===openLead)) loadLeadDetail(list.find(r=>r.name===openLead));
-}
-
-async function loadLeadDetail(r){
-  const box = document.getElementById("detL"); if(!box) return;
-  const {since, until} = rangeFor(period);
-  try{
-    const res = await qMeta({source:"meta", accounts:r.c.meta, breakdowns:["ad_account","day"], metrics:["spend", MSG], since, until});
-    const days = new Map();
-    res.forEach(x=>{ const k=parseDay(x[1]); const d=days.get(k)||{inv:0,msgs:0}; d.inv+=num(x[2]); d.msgs+=num(x[3]); days.set(k,d); });
-    const keys = [...days.keys()].sort();
-    if(!keys.length){ box.textContent = "Sin movimientos en este período."; return; }
-    box.innerHTML = `<table><thead><tr><th>Día</th><th>Inversión</th><th>Mensajes</th><th>Costo por mensaje</th></tr></thead><tbody>${
-      keys.map(k=>{ const d=days.get(k); return `<tr><td>${fmtDate(k)}</td><td>${money(d.inv)}</td><td>${nf0.format(d.msgs)}</td><td>${d.msgs>0?money(d.inv/d.msgs):"—"}</td></tr>`; }).join("")
-    }</tbody></table>`;
-  }catch(e){ box.textContent = errMsg(e); }
 }
 
 function setTotals(list){
@@ -414,62 +334,53 @@ function setTotals(list){
   const invL = linked.reduce((s,r)=>s+r.inv,0);
   const fac = linked.reduce((s,r)=>s+(r.fac||0),0);
   const mer = invL>0 ? fac/invL : null;
-  document.getElementById("tInv").textContent = money(inv);
-  document.getElementById("tInvN").textContent = `${list.length} clientes`;
-  document.getElementById("tFac").textContent = money(fac);
-  const tm = document.getElementById("tMer"); tm.textContent = merTxt(mer); tm.className = merCls(mer);
-  document.getElementById("tf").innerHTML = list.length ? `<tr><td>Total</td><td>${money(inv)}</td><td>${money(fac)}</td><td><span class="merv ${merCls(mer)}">${merTxt(mer)}</span></td></tr>` : "";
+  $("tInv").textContent = money(inv);
+  $("tInvN").textContent = `${list.length} clientes`;
+  $("tFac").textContent = money(fac);
+  const tm = $("tMer"); tm.textContent = merTxt(mer); tm.className = merCls(mer);
+  $("tf").innerHTML = list.length ? `<tr><td>Total</td><td>${money(inv)}</td><td>${money(fac)}</td><td><span class="merv ${merCls(mer)}">${merTxt(mer)}</span></td></tr>` : "";
 }
 
-function parseDay(s){
-  const m = String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  return m ? `${m[3]}-${m[1]}-${m[2]}` : String(s).slice(0,10);
+function renderLeads(term){
+  const tb = $("tbL"), tf = $("tfL");
+  const list = leadRows.filter(r=>!term || r.name.toLowerCase().includes(term)).sort((a,b)=>b.inv-a.inv);
+  if(!list.length){ tb.innerHTML = `<tr><td colspan="4" class="empty">${leadRows.length ? "Ningún cliente coincide con la búsqueda." : "No hay clientes de leads con inversión en los últimos 30 días."}</td></tr>`; tf.innerHTML=""; return; }
+  tb.innerHTML = list.map(r=>{
+    const row = `<tr class="row" tabindex="0" data-n="${esc(r.c.id)}" aria-expanded="${openLead===r.c.id}">
+      <td class="name"><b>${esc(r.name)}</b></td>
+      <td>${money(r.inv)}</td>
+      <td>${nf0.format(r.msgs)}</td>
+      <td>${r.cpm==null?'<span class="na">—</span>':money(r.cpm)}</td>
+    </tr>`;
+    return row + (openLead===r.c.id ? `<tr class="detail"><td colspan="4"><div class="det">${detailHtml(r, true)}</div></td></tr>` : "");
+  }).join("");
+  const inv = list.reduce((s,r)=>s+r.inv,0), msgs = list.reduce((s,r)=>s+r.msgs,0);
+  tf.innerHTML = `<tr><td>Total</td><td>${money(inv)}</td><td>${nf0.format(msgs)}</td><td>${msgs>0?money(inv/msgs):"—"}</td></tr>`;
 }
-async function loadDetail(r){
-  const box = document.getElementById("det"); if(!box) return;
+
+function detailHtml(r, leads){
   const {since, until} = rangeFor(period);
-  const fx = Math.max(1, num(document.getElementById("fx").value)||1);
-  try{
-    const jobs = [qMeta({source:"meta", accounts:r.c.meta, breakdowns:["account_id","day"], metrics:["spend"], since, until})];
-    if(r.c.tn) jobs.push(qStore({source:"tiendanube", accounts:r.c.tn, breakdowns:["day"], metrics:["tn_orders_total_billing"], since, until}));
-    if(r.c.woo) jobs.push(qStore({source:"woocommerce", accounts:r.c.woo, breakdowns:["day"], metrics:["woocommerce_orders_total"], since, until}));
-    const [m, ...revs] = await Promise.all(jobs);
-    const days = new Map();
-    const get = d => { if(!days.has(d)) days.set(d,{inv:0,fac:0}); return days.get(d); };
-    m.forEach(x=>{ get(parseDay(x[1])).inv += num(x[2]) * (USD_ACCOUNTS.has(String(x[0]))?fx:1); });
-    revs.forEach(rr=>rr.forEach(x=>{ get(parseDay(x[0])).fac += num(x[1]); }));
-    const keys = [...days.keys()].sort();
-    if(!keys.length){ box.textContent = "Sin movimientos en este período."; return; }
-    box.innerHTML = `<table><thead><tr><th>Día</th><th>Inversión</th><th>Facturación</th><th>MER</th></tr></thead><tbody>${
-      keys.map(k=>{ const d=days.get(k); const mer = r.hasStore && d.inv>0 ? d.fac/d.inv : null;
-        return `<tr><td>${fmtDate(k)}</td><td>${money(d.inv)}</td><td>${r.hasStore?money(d.fac):"—"}</td><td><span class="merv ${merCls(mer)}">${merTxt(mer)}</span></td></tr>`; }).join("")
-    }</tbody></table>`;
-  }catch(e){ box.textContent = errMsg(e); }
+  const days = daily.filter(d=>d.client_id===r.c.id && d.day>=since && d.day<=until).sort((a,b)=>a.day.localeCompare(b.day));
+  if(!days.length) return "Sin movimientos en este período.";
+  if(leads){
+    return `<table><thead><tr><th>Día</th><th>Inversión</th><th>Mensajes</th><th>Costo por mensaje</th></tr></thead><tbody>${
+      days.map(d=>{ const m=num(d.messages), i=num(d.spend_ars); return `<tr><td>${fmtDate(d.day)}</td><td>${money(i)}</td><td>${nf0.format(m)}</td><td>${m>0?money(i/m):"—"}</td></tr>`; }).join("")}</tbody></table>`;
+  }
+  return `<table><thead><tr><th>Día</th><th>Inversión</th><th>Facturación</th><th>MER</th></tr></thead><tbody>${
+    days.map(d=>{ const i=num(d.spend_ars), f=num(d.revenue); const mer = r.hasStore && i>0 ? f/i : null;
+      return `<tr><td>${fmtDate(d.day)}</td><td>${money(i)}</td><td>${r.hasStore?money(f):"—"}</td><td><span class="merv ${merCls(mer)}">${merTxt(mer)}</span></td></tr>`; }).join("")}</tbody></table>`;
 }
 
 function skeleton(){
-  document.getElementById("tb").innerHTML = Array.from({length:8},()=>`<tr class="skel"><td>.</td><td>.</td><td>.</td><td>.</td></tr>`).join("");
-  document.getElementById("tbL").innerHTML = Array.from({length:3},()=>`<tr class="skel"><td>.</td><td>.</td><td>.</td><td>.</td></tr>`).join("");
-}
-
-async function refresh(fresh){
-  if(!mcp) return;
-  skeleton(); setStatus("Consultando Master Metrics…");
-  try{
-    if(!activeMeta || fresh) await loadActive(fresh);
-    await loadPeriod(fresh);
-  }catch(e){
-    rows = []; document.getElementById("tb").innerHTML = `<tr><td colspan="4" class="empty">${esc(errMsg(e))}</td></tr>`;
-    leadRows = []; document.getElementById("tbL").innerHTML = ""; document.getElementById("tfL").innerHTML = "";
-    document.getElementById("tf").innerHTML = ""; setStatus("");
-  }
+  $("tb").innerHTML = Array.from({length:8},()=>`<tr class="skel"><td>.</td><td>.</td><td>.</td><td>.</td></tr>`).join("");
+  $("tbL").innerHTML = Array.from({length:3},()=>`<tr class="skel"><td>.</td><td>.</td><td>.</td><td>.</td></tr>`).join("");
 }
 
 /* ---------- Eventos ---------- */
 document.querySelectorAll(".periods button").forEach(b=>b.addEventListener("click",()=>{
   period = b.dataset.p;
   document.querySelectorAll(".periods button").forEach(x=>x.setAttribute("aria-pressed", x===b?"true":"false"));
-  refresh(false);
+  refresh();
 }));
 document.querySelectorAll("th button").forEach(b=>b.addEventListener("click",()=>{
   const k = b.dataset.k;
@@ -478,24 +389,16 @@ document.querySelectorAll("th button").forEach(b=>b.addEventListener("click",()=
   b.setAttribute("data-dir", sortDir>0?"↑":"↓");
   render();
 }));
-document.getElementById("q").addEventListener("input", render);
-document.getElementById("fx").addEventListener("change", ()=>{ try{localStorage.setItem("mer_fx", document.getElementById("fx").value);}catch(_){} refresh(false); });
-document.getElementById("reload").addEventListener("click", ()=>refresh(true));
-const toggle = tr => { const n = tr.dataset.n; openClient = openClient===n ? null : n; render(); };
-document.getElementById("tb").addEventListener("click", e=>{ const tr=e.target.closest("tr.row"); if(tr) toggle(tr); });
-document.getElementById("tb").addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && e.target.matches("tr.row")){ e.preventDefault(); toggle(e.target); } });
-const toggleL = tr => { const n = tr.dataset.n; openLead = openLead===n ? null : n; renderLeads(document.getElementById("q").value.trim().toLowerCase()); };
-document.getElementById("tbL").addEventListener("click", e=>{ const tr=e.target.closest("tr.row"); if(tr) toggleL(tr); });
-document.getElementById("tbL").addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && e.target.matches("tr.row")){ e.preventDefault(); toggleL(e.target); } });
+$("q").addEventListener("input", render);
+function bindRows(tbId, getOpen, setOpen){
+  const handler = tr => { const n = tr.dataset.n; setOpen(getOpen()===n ? null : n); render(); };
+  $(tbId).addEventListener("click", e=>{ const tr=e.target.closest("tr.row"); if(tr) handler(tr); });
+  $(tbId).addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && e.target.matches("tr.row")){ e.preventDefault(); handler(e.target); } });
+}
+bindRows("tb", ()=>openClient, v=>openClient=v);
+bindRows("tbL", ()=>openLead, v=>openLead=v);
 
-try{ const s = localStorage.getItem("mer_fx"); if(s) document.getElementById("fx").value = s; }catch(_){}
-
-skeleton(); setStatus("Conectando con Master Metrics…");
-(async()=>{
-  mcp = window.claude && window.claude.use ? await window.claude.use("mcp") : null;
-  if(!mcp){ document.getElementById("tb").innerHTML = `<tr><td colspan="4" class="empty">Esta vista no puede consultar Master Metrics. Abrí la página desde claude.ai con el conector conectado.</td></tr>`; setStatus(""); return; }
-  refresh(false);
-})();
+boot();
 </script>
 </body>
 </html>
