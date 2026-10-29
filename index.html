@@ -95,11 +95,7 @@ h2.sec{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;font-wei
   <!-- LOGIN -->
   <section id="login" class="login" hidden>
     <h1>MER View</h1>
-    <p class="sub">Ingresá con tu mail de Elevation. Te mandamos un link para entrar.</p>
-    <form id="loginForm" class="loginform">
-      <input class="ctl" id="email" type="email" required placeholder="nombre@mkt-elevation.com" autocomplete="email" aria-label="Mail de Elevation">
-      <button class="ctl primary" type="submit">Enviar link de acceso</button>
-    </form>
+    <p class="sub">Para ver el tablero necesitás el link de acceso de Elevation. Pedíselo a Julián.</p>
     <div class="status" id="loginStatus" role="status"></div>
   </section>
 
@@ -127,7 +123,7 @@ h2.sec{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;font-wei
     <div class="bar">
       <input class="ctl" id="q" type="search" placeholder="Buscar cliente" aria-label="Buscar cliente">
       <span class="fx" id="meta"></span>
-      <span class="fx"><span id="who"></span> <button class="ctl" id="logout" type="button">Salir</button></span>
+      <span class="fx"><button class="ctl" id="logout" type="button" title="Borra el acceso guardado en este navegador">Salir</button></span>
     </div>
     <div class="status" id="status" role="status"></div>
 
@@ -163,8 +159,8 @@ h2.sec{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;font-wei
 <script>
 /* ---------- Supabase ---------- */
 const CFG = window.MERVIEW_CONFIG || {};
-const DOMAIN = (CFG.allowedDomain || "mkt-elevation.com").toLowerCase();
-const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
+const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+const KEY_STORE = "merview_key";
 
 /* ---------- Fechas en hora de Buenos Aires ---------- */
 function todayBA(){
@@ -196,49 +192,54 @@ let clients = [], daily = [], rows = [], leadRows = [], errors = [], lastSync = 
 const $ = id => document.getElementById(id);
 function setStatus(msg, err){ $("status").textContent = msg||""; $("status").className = "status"+(err?" err":""); }
 
-/* ---------- Login ---------- */
-$("loginForm").addEventListener("submit", async e=>{
-  e.preventDefault();
-  const email = $("email").value.trim().toLowerCase();
-  const st = $("loginStatus");
-  if(!email.endsWith("@"+DOMAIN)){ st.textContent = `Solo se puede entrar con un mail @${DOMAIN}.`; st.className="status err"; return; }
-  st.textContent = "Enviando link…"; st.className="status";
-  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.origin + location.pathname } });
-  if(error){ st.textContent = "No se pudo enviar el link: " + error.message; st.className="status err"; return; }
-  st.textContent = `Listo. Revisá ${email} y tocá el link para entrar.`;
-});
-$("logout").addEventListener("click", async ()=>{ await sb.auth.signOut(); location.reload(); });
+/* ---------- Acceso por link (#k=clave) ---------- */
+let accessKey = null;
+function readKey(){
+  const m = location.hash.match(/[#&]k=([A-Za-z0-9_-]+)/);
+  if(m){
+    try{ localStorage.setItem(KEY_STORE, m[1]); }catch(e){}
+    history.replaceState(null, "", location.pathname + location.search);
+    return m[1];
+  }
+  try{ return localStorage.getItem(KEY_STORE); }catch(e){ return null; }
+}
+function forgetKey(){ try{ localStorage.removeItem(KEY_STORE); }catch(e){} }
+function showLocked(msg){
+  $("app").hidden = true; $("login").hidden = false;
+  if(msg){ $("loginStatus").textContent = msg; $("loginStatus").className = "status err"; }
+}
+const isKeyError = e => /clave_invalida/.test(e?.message || "");
+async function rpc(fn, args){
+  const { data, error } = await sb.rpc(fn, Object.assign({ p_key: accessKey }, args||{}));
+  if(error){
+    if(isKeyError(error)){ forgetKey(); showLocked("El link de acceso ya no es válido. Pedí el link nuevo."); }
+    throw error;
+  }
+  return data;
+}
+$("logout").addEventListener("click", ()=>{ forgetKey(); location.reload(); });
 
 async function boot(){
-  const { data:{ session } } = await sb.auth.getSession();
-  const email = session?.user?.email?.toLowerCase() || "";
-  if(!session){ $("login").hidden = false; $("app").hidden = true; return; }
-  if(!email.endsWith("@"+DOMAIN)){
-    await sb.auth.signOut();
-    $("login").hidden = false; $("app").hidden = true;
-    $("loginStatus").textContent = `La cuenta ${email} no tiene acceso. Entrá con tu mail @${DOMAIN}.`; $("loginStatus").className="status err";
+  accessKey = readKey();
+  if(!accessKey){ showLocked(); return; }
+  try{
+    await loadBase();
+  }catch(e){
+    if(!isKeyError(e)) showLocked("No se pudo cargar el tablero: " + (e.message||e));
     return;
   }
   $("login").hidden = true; $("app").hidden = false;
-  $("who").textContent = email;
-  await loadBase();
   await refresh();
 }
-sb.auth.onAuthStateChange((ev)=>{ if(ev==="SIGNED_IN" && $("app").hidden) boot(); });
+window.addEventListener("hashchange", ()=>{ if(/[#&]k=/.test(location.hash)) location.reload(); });
 
 /* ---------- Datos ---------- */
 async function loadBase(){
-  const [c, s, er, sr] = await Promise.all([
-    sb.from("clients").select("*").eq("active", true),
-    sb.from("settings").select("*"),
-    sb.from("source_errors").select("*"),
-    sb.from("sync_runs").select("*").order("ran_at",{ascending:false}).limit(1)
-  ]);
-  if(c.error) throw c.error;
-  clients = c.data || [];
-  fxRate = (s.data||[]).find(x=>x.key==="usd_ars")?.value || null;
-  errors = er.data || [];
-  lastSync = (sr.data||[])[0] || null;
+  const b = await rpc("merview_base");
+  clients = b.clients || [];
+  fxRate = b.usd_ars || null;
+  errors = b.errors || [];
+  lastSync = b.last_sync || null;
   const parts = [];
   if(lastSync) parts.push("Datos actualizados: " + new Date(lastSync.ran_at).toLocaleString("es-AR",{timeZone:"America/Argentina/Buenos_Aires",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
   if(fxRate) parts.push(`Dólar para cuentas en USD: $${fxRate}`);
@@ -246,15 +247,7 @@ async function loadBase(){
 }
 
 async function fetchDaily(since, until){
-  const out = []; let from = 0; const page = 1000;
-  for(;;){
-    const { data, error } = await sb.from("client_daily").select("client_id,day,spend_ars,messages,revenue").gte("day", since).lte("day", until).range(from, from+page-1);
-    if(error) throw error;
-    out.push(...data);
-    if(data.length < page) break;
-    from += page;
-  }
-  return out;
+  return (await rpc("merview_daily", { p_since: since, p_until: until })) || [];
 }
 
 async function refresh(){
