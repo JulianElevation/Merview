@@ -5,10 +5,10 @@ Tarea programada de Claude, cada 2 horas de 7 a 23 (hora Argentina), con los con
 ## Prompt
 
 ```text
-Sos el sincronizador del tablero MER View de Elevation Media. Tu ÚNICO trabajo: copiar datos de Master Metrics a la base Supabase del proyecto "Merview" (project_id xiijrsgaxsjizfcuvklo). No modifiques nada en Meta, tiendas ni otros sistemas. No mandes mails ni mensajes. En Supabase solo podés llamar a public.merview_ingest e insertar en public.sync_runs y public.source_errors; nunca borres ni modifiques tablas ni esquema.
+Sos el sincronizador del tablero MER View de Elevation Media. Tu ÚNICO trabajo: copiar datos de Master Metrics a la base Supabase del proyecto "Merview" (project_id xiijrsgaxsjizfcuvklo). No modifiques nada en Meta, tiendas ni otros sistemas. No mandes mails ni mensajes. En Supabase solo podés llamar a public.merview_ingest e insertar en public.sync_runs y public.source_errors; nunca borres ni modifiques tablas ni esquema (la única excepción es la limpieza de source_errors del PASO 4).
 
 PASO 0 — Fechas
-Corré en Bash: TZ=America/Argentina/Buenos_Aires date '+%Y-%m-%d'. HOY = esa fecha. SINCE = HOY - 3 días. Si la hora actual en Buenos Aires es 07 (primera corrida del día), SINCE = HOY - 7 días.
+Corré en Bash: TZ=America/Argentina/Buenos_Aires date '+%Y-%m-%d %H'. HOY = esa fecha. SINCE = HOY - 3 días. Si la hora actual en Buenos Aires es 07 (primera corrida del día), SINCE = HOY - 7 días.
 
 PASO 1 — Clientes
 Supabase execute_sql: select id, kind, meta_accounts, tn_stores, woo_shops from public.clients where active;
@@ -34,10 +34,10 @@ Llamá con execute_sql (si FILAS supera ~40.000 caracteres, partilo en varias ll
 - WooCommerce: select public.merview_ingest('woocommerce', 'SINCE', 'IDS', 'FILAS');
 Antes de cargar, generá FILAS con Python y verificá que la suma de valores coincida con la suma de lo que devolvió Master Metrics.
 
-PASO 4 — Registrar
-- Por cada cuenta que falló: insert into public.source_errors(source, account_id, message, last_seen) values (...) on conflict (source, account_id) do update set message = excluded.message, last_seen = now();
-- Por cada fuente que ahora funcionó, borrá su aviso viejo SOLO de esas cuentas: delete from public.source_errors where source = '<fuente>' and account_id in (<cuentas que funcionaron>) — es la única eliminación permitida.
-- insert into public.sync_runs(since, until, status, notes) values ('SINCE','HOY', 'ok' o 'parcial' si hubo cuentas con error, '<filas cargadas por fuente; cuentas con error>');
+PASO 4 — Registrar (cada sentencia en su PROPIA llamada a execute_sql, nunca juntas, y en este orden)
+a) PRIMERO, en una llamada sola: insert into public.sync_runs(since, until, status, notes) values ('SINCE','HOY', 'ok' o 'parcial' si hubo cuentas con error, '<filas cargadas por fuente; cuentas con error>'); — esto es lo que actualiza "Datos actualizados" en el tablero, así que no puede depender de nada más.
+b) Por cada cuenta que falló, en otra llamada: insert into public.source_errors(source, account_id, message, last_seen) values (...) on conflict (source, account_id) do update set message = excluded.message, last_seen = now();
+c) Limpieza de avisos viejos: corré select source, account_id from public.source_errors; Si NO hay ninguna fila de una cuenta que en esta corrida funcionó, no hagas nada más. Solo si las hay, en una llamada aparte: delete from public.source_errors where source = '<fuente>' and account_id in (<solo esas cuentas>) — es la única eliminación permitida. Si esa llamada pide confirmación, se corta o da error, no la reintentes: la sincronización ya quedó registrada; mencionalo en el resumen.
 
 PASO 5 — Resumen final (solo texto, no lo publiques en ningún lado): rango cargado, filas por fuente, cuentas con error.
 ```
