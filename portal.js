@@ -425,6 +425,15 @@ const ICONOS = {
   tie: '<path d="M3 9 4.5 4h15L21 9"/><path d="M4 9v11h16V9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/>',
   tab: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>',
 };
+// Qué es bueno en cada métrica: 1 que suba, -1 que baje. Inversión no tiene bueno ni malo.
+const POLARIDAD = { fac: 1, mer: 1, ven: 1, tic: 1, cac: -1, cli: 1, uni: 1, msg: 1, cpm: -1 };
+function subTxt(sub, id) {
+  const m = String(sub).match(/^([▲▼])(.*)$/);
+  if (!m) return esc(sub);
+  const pol = modoCliente ? 0 : POLARIDAD[id] || 0, sinCambio = /^ 0%/.test(m[2]);
+  const clase = !pol || sinCambio ? "" : (m[1] === "▲") === (pol > 0) ? "fl-bien" : "fl-mal";
+  return `<span class="${clase}">${m[1]}</span>${esc(m[2])}`;
+}
 const icono = (id) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONOS[id] || ""}</svg>`;
 function grafMetricas() {
   const suma = (id, t, campo, gr) => ({ id, t, tipo: "barras", gr, fmtY: gr === "vol" ? corto : cantidad, fmtV: gr === "vol" ? money : cantidad, fmtL: gr === "vol" ? cortoVal : cantidad, v: (x) => x[campo], tot: (ps) => ps.reduce((s, x) => s + x[campo], 0) });
@@ -464,7 +473,7 @@ function tiles(valores, extras = []) {
     const [v, sub, cls] = valores[m.id] || ["—", ""], n = sel.indexOf(m.id) + 1;
     return `<button type="button" class="tile" data-gm="${m.id}" data-n="${n}" aria-pressed="${n > 0}">
       <span class="tile-t">${icono(m.id)}<span>${esc(m.t)}</span><i class="tile-pto" aria-hidden="true"></i></span>
-      <b class="${cls || ""}">${esc(v)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</button>`;
+      <b class="${cls || ""}">${esc(v)}</b>${sub ? `<small>${subTxt(sub, m.id)}</small>` : ""}</button>`;
   }).join("");
   // Hasta 4 por fila: con 8 quedan dos filas parejas, sin tarjetas sueltas.
   return `<div class="tiles" style="--cols:${Math.min(4, total)}">${lista}${extras.join("")}</div>`;
@@ -667,7 +676,7 @@ function vistaGeneral() {
       <div class="pie"><span><span class="punto"></span>En vivo <span class="punto lento" style="margin-left:12px"></span>Tienda sin conectar: Master Metrics, cada 2 horas</span></div>
     </section>${tablaLeads}`;
 }
-const kpi = (t, v, sub = "", cls = "", ic = "") => `<div class="kpi"><span class="kpi-t">${ic ? icono(ic) : ""}${esc(t)}</span><b class="${cls}">${esc(v)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</div>`;
+const kpi = (t, v, sub = "", cls = "", ic = "") => `<div class="kpi"><span class="kpi-t">${ic ? icono(ic) : ""}${esc(t)}</span><b class="${cls}">${esc(v)}</b>${sub ? `<small>${subTxt(sub, ic)}</small>` : ""}</div>`;
 function fuentes() {
   const e = GEN.estado || {};
   const meta = e.meta_ultima_sync, tn = e.tn_ultima_sync, mm = e.mm_ultima_sync;
