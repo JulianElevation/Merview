@@ -395,7 +395,7 @@ function avisoConexion(conectada) {
   const link = GEN.app_id ? `<a class="btn pri" href="https://www.tiendanube.com/apps/${encodeURIComponent(GEN.app_id)}/authorize" target="_blank" rel="noopener">Conectar tienda</a>` : "";
   return `<div class="aviso">Esta tienda todavía no está conectada: los números salen de Master Metrics y faltan órdenes, cuotas y envíos.${link}</div>`;
 }
-const ESTADOS = { paid: ["Pagada", "ok"], pending: ["Sin pagar", "pend"], authorized: ["Autorizada", "pend"], voided: ["Anulada", "mal"], refunded: ["Reembolsada", "mal"], partially_paid: ["Pago parcial", "pend"], partially_refunded: ["Reembolso parcial", "mal"], abandoned: ["Abandonada", "mal"] };
+const ESTADOS = { paid: ["Pagada", "ok"], pending: ["Sin pagar", "pend"], authorized: ["Autorizada", "pend"], voided: ["Anulada", "mal"], refunded: ["Reembolsada", "mal"], partially_paid: ["Sin pagar", "pend"], partially_refunded: ["Reembolso parcial", "mal"], abandoned: ["Abandonada", "mal"] };
 function tablaOrdenes() {
   const ord = CLI.ordenes || [], total = num(CLI.ordenes_total);
   const maxOrden = ultimoNumero;

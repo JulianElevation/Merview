@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import {
-  clienteTN, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, proximaVentana,
+  clienteTN, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana,
 } from "../supabase/functions/tn-app/lib.ts";
 
 const res = (status, body, headers = {}) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers });
@@ -70,6 +70,20 @@ test("pagina hasta el final y trata el 404 de última página como fin", async (
   assert.equal(out.length, 200);
   assert.match(urls[0], /api\.tiendanube\.com\/2025-03\/7\/orders\?/);
   assert.match(urls[1], /page=2/);
+});
+
+test("un 404 que no sea de última página es un error, no una tienda sin ventas", async () => {
+  await assert.rejects(clienteTN("7", "t", async () => res(404, { code: 404, message: "Not Found" })).ordenes({}), /HTTP 404/);
+  assert.deepEqual(await clienteTN("7", "t", async () => res(404, { description: "Last page is 0" })).ordenes({}), []);
+});
+
+test("la consulta no pide campos que la API 2025-03 rechaza", () => {
+  for (const campo of ["shipping_cost_customer", "shipping_option"]) assert.ok(!ORDER_FIELDS.split(",").includes(campo), campo);
+});
+
+test("una orden con error de campos no se confunde con una orden inexistente", async () => {
+  await assert.rejects(clienteTN("7", "t", async () => res(404, { description: "Invalid fields for this resource: x" })).orden(1), /Invalid fields/);
+  assert.equal(await clienteTN("7", "t", async () => res(404, { message: "Not Found" })).orden(1), null);
 });
 
 test("reintenta ante 429 y falla ante errores reales", async () => {

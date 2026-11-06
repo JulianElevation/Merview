@@ -3,8 +3,8 @@
 export const API_VERSION = "2025-03";
 export const USER_AGENT = "Elevation Portal (contacto@mkt-elevation.com)";
 export const ORDER_FIELDS = [
-  "id", "number", "total", "subtotal", "discount", "shipping_cost_customer", "currency", "payment_status", "status",
-  "storefront", "gateway_name", "payment_details", "shipping_option", "fulfillments", "contact_email", "products",
+  "id", "number", "total", "subtotal", "discount", "currency", "payment_status", "status",
+  "storefront", "gateway_name", "payment_details", "fulfillments", "contact_email", "products",
   "created_at", "paid_at", "cancelled_at", "updated_at",
 ].join(",");
 export const ORDER_EVENTS = [
@@ -95,7 +95,11 @@ export function clienteTN(storeId: string, token: string, f: Fetcher = fetch, es
     llamar,
     async orden(id: string | number) {
       const r = await llamar(`/orders/${id}?aggregates=fulfillment_orders&fields=${ORDER_FIELDS}`);
-      if (r.status === 404) return null;
+      if (r.status === 404) {
+        const cuerpo = await r.text();
+        if (/invalid/i.test(cuerpo)) throw new Error(`orden ${id}: HTTP 404 ${cuerpo.slice(0, 200)}`);
+        return null;
+      }
       if (!r.ok) throw new Error(`orden ${id}: HTTP ${r.status}`);
       return await r.json();
     },
@@ -105,8 +109,13 @@ export function clienteTN(storeId: string, token: string, f: Fetcher = fetch, es
       for (let page = 1; ; page++) {
         const q = new URLSearchParams({ ...filtro, per_page: "200", page: String(page), aggregates: "fulfillment_orders", fields: ORDER_FIELDS });
         const r = await llamar(`/orders?${q}`);
-        if (r.status === 404) break;
-        if (!r.ok) throw new Error(`orders: HTTP ${r.status}`);
+        if (r.status === 404) {
+          // Solo "Last page" significa que no hay más. Cualquier otro 404 es un error de verdad.
+          const cuerpo = await r.text();
+          if (/last page/i.test(cuerpo)) break;
+          throw new Error(`orders: HTTP 404 ${cuerpo.slice(0, 200)}`);
+        }
+        if (!r.ok) throw new Error(`orders: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
         const lote = await r.json();
         out.push(...lote);
         if (lote.length < 200) break;

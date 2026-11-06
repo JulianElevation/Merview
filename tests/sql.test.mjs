@@ -49,6 +49,7 @@ await cargar([
   orden(3, dia(1), 700, { buyer_hash: "repite" }),
   orden(4, hoy, 9999, { payment_status: "pending", buyer_hash: "p" }),
   orden(5, hoy, 8888, { status: "cancelled", buyer_hash: "c" }),
+  orden(7, hoy, 111, { payment_status: "partially_paid", buyer_hash: "pp" }),
 ]);
 await db.exec(`
   insert into public.store_daily values ('${hoy}','tiendanube','s1',111111), ('${dia(5)}','tiendanube','s1',4000), ('${hoy}','tiendanube','s2',2500);
@@ -73,8 +74,8 @@ const unDia = (await q(`select public.portal_cliente('clave','a',$1::date,$1::da
 const d0 = unDia.dias[0];
 assert.equal(Number(d0.revenue), 1500, "pendiente y cancelada no suman");
 assert.equal(Number(d0.orders), 2);
-assert.equal(Number(unDia.pendiente.total), 9999);
-assert.equal(unDia.ordenes_total, 4, "el listado muestra todas las órdenes del período");
+assert.equal(Number(unDia.pendiente.total), 9999 + 111, "pago parcial cuenta como no pagada");
+assert.equal(unDia.ordenes_total, 5, "el listado muestra todas las órdenes del período");
 assert.equal(Number(d0.nuevos), 1);
 assert.equal(Number(d0.recurrentes), 1, "ya había comprado ayer");
 assert.deepEqual(unDia.tipos.map((t) => t.k).sort(), ["Nuevo", "Recurrente"]);
