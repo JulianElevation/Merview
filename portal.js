@@ -49,6 +49,20 @@ function rango() {
 }
 const rangoTxt = ([a, b]) => (a === b ? ddmm(a) : `${ddmm(a)} al ${ddmm(b)}`);
 const incluyeHoy = () => rango()[1] >= hoyBA();
+// Comparar hoy, que va por la mitad, contra un día entero no dice nada: ahí no se muestra.
+function cambio(a, b) {
+  if (E.p === "hoy" || !(b > 0) || a == null || !isFinite(a)) return "";
+  const v = Math.round(((a - b) / b) * 100);
+  return `${v >= 0 ? "▲" : "▼"} ${Math.abs(v)}% vs período anterior`;
+}
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const mesTxt = (m) => `${MESES[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`;
+function ultimosMeses() {
+  const h = hoyBA(), out = [];
+  let y = Number(h.slice(0, 4)), m = Number(h.slice(5, 7));
+  for (let i = 0; i < 12; i++) { out.unshift(`${y}-${String(m).padStart(2, "0")}`); if (--m === 0) { m = 12; y--; } }
+  return out;
+}
 
 /* ---------- Estado ---------- */
 const E = { v: "general", c: null, p: "mes", desde: null, hasta: null, q: "", soloActivos: true, sortK: "spend", sortDir: -1, limite: 100, abiertos: { fac: true } };
@@ -183,7 +197,7 @@ function ejes(puntos, tope, paso, fmtY) {
     s += `<text x="${izq - 8}" y="${y + 4}" text-anchor="end">${esc(fmtY(v))}</text>`;
   }
   const slot = (W - izq - der) / puntos.length, cada = Math.max(1, Math.ceil(puntos.length / Math.max(3, Math.floor((W - izq) / 62))));
-  puntos.forEach((p, i) => { if (i % cada === 0) s += `<text x="${izq + slot * i + slot / 2}" y="${H - 8}" text-anchor="middle">${ddmm(p.day)}</text>`; });
+  puntos.forEach((p, i) => { if (i % cada === 0) s += `<text x="${izq + slot * i + slot / 2}" y="${H - 8}" text-anchor="middle">${p.label ?? ddmm(p.day)}</text>`; });
   return s;
 }
 function grafico(puntos, tipo, color, fmtY, fmtTip) {
@@ -212,6 +226,67 @@ function grafico(puntos, tipo, color, fmtY, fmtTip) {
   }
   const hits = puntos.map((p, i) => `<rect class="hit" data-t="${esc(fmtTip(p))}" x="${izq + slot * i}" y="0" width="${slot}" height="${H}" fill="transparent"/>`).join("");
   return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" style="height:auto" role="img">${ejes(puntos, tope, paso, fmtY)}${marcas}${hits}</svg><div class="tip" hidden></div></div>`;
+}
+// Barras apiladas de una misma escala, con leyenda: cada parte va separada por un espacio.
+function apiladas(puntos, series, nombre) {
+  const vals = puntos.map((p) => series.reduce((s, k) => s + num(p.partes[k]), 0));
+  if (!vals.some((v) => v > 0)) return '<div class="sinchart">No hay datos todavía.</div>';
+  const { W, H, izq, der, arr, aba } = CHART, alto = H - arr - aba;
+  const { paso, tope } = escala(Math.max(...vals));
+  const slot = (W - izq - der) / puntos.length, bw = Math.max(4, Math.min(30, slot * 0.62)), b = arr + alto;
+  let marcas = "", hits = "";
+  puntos.forEach((p, i) => {
+    let base = b;
+    const xx = izq + slot * i + (slot - bw) / 2, visibles = series.filter((k) => num(p.partes[k]) > 0);
+    visibles.forEach((k, j) => {
+      const h = (num(p.partes[k]) / tope) * alto, y = base - h, col = COLORES[series.indexOf(k)], ult = j === visibles.length - 1;
+      const alt = Math.max(1, ult ? h : h - 2), r = ult ? Math.min(4, bw / 2, alt) : 0;
+      marcas += `<path fill="${col}" d="M${xx} ${base}V${base - alt + r}Q${xx} ${base - alt} ${xx + r} ${base - alt}H${xx + bw - r}Q${xx + bw} ${base - alt} ${xx + bw} ${base - alt + r}V${base}Z"/>`;
+      base = y;
+    });
+    const tip = `${p.label}: ` + (visibles.map((k) => `${nombre(k)} ${nf0.format(num(p.partes[k]))}`).join(" · ") || "sin ventas");
+    hits += `<rect class="hit" data-t="${esc(tip)}" x="${izq + slot * i}" y="0" width="${slot}" height="${H}" fill="transparent"/>`;
+  });
+  const ley = series.map((k, i) => `<span><i style="background:${COLORES[i]}"></i>${esc(nombre(k))}</span>`).join("");
+  return `<div class="leyenda">${ley}</div><div class="chart"><svg viewBox="0 0 ${W} ${H}" style="height:auto" role="img">${ejes(puntos, tope, paso, (v) => nf0.format(v))}${marcas}${hits}</svg><div class="tip" hidden></div></div>`;
+}
+// Agrupa las categorías menos usadas para no superar los colores disponibles.
+function porMes(filas, etiqueta) {
+  const meses = ultimosMeses(), tot = new Map();
+  filas.forEach((f) => tot.set(String(f.k), (tot.get(String(f.k)) || 0) + num(f.ventas)));
+  const orden = [...tot.keys()].sort((a, b) => tot.get(b) - tot.get(a));
+  const series = orden.slice(0, orden.length > 6 ? 5 : 6);
+  if (orden.length > 6) series.push("__otros");
+  const puntos = meses.map((m) => {
+    const partes = {};
+    filas.filter((f) => f.mes === m).forEach((f) => {
+      const k = series.includes(String(f.k)) ? String(f.k) : "__otros";
+      partes[k] = (partes[k] || 0) + num(f.ventas);
+    });
+    return { label: mesTxt(m), partes };
+  });
+  return apiladas(puntos, series, (k) => (k === "__otros" ? "Otros" : etiqueta(k)));
+}
+function tablaProductos() {
+  const p = CLI.productos || [];
+  if (!p.length) return "";
+  const tot = p.reduce((s, x) => s + num(x.unidades), 0);
+  return `<section class="bloque"><h2>Productos más vendidos</h2><p class="sub" style="padding:0 16px 8px">Por unidades pagadas en el período. Los importes son a precio de lista, antes de descuentos.</p>
+    <div class="tablebox"><table><thead><tr><th>Producto</th><th>Unidades</th><th class="hm">% del ranking</th><th>Importe</th></tr></thead>
+    <tbody>${p.map((x) => `<tr><td class="nom"><b>${esc(x.nombre)}</b></td><td>${nf0.format(num(x.unidades))}</td><td class="hm">${pct(num(x.unidades), tot)}%</td><td>${money(num(x.total))}</td></tr>`).join("")}</tbody></table></div></section>`;
+}
+function vistasPorMes() {
+  const meses = ultimosMeses(), m = new Map((CLI.meses || []).map((x) => [x.mes, x]));
+  const puntos = (f) => meses.map((k) => ({ label: mesTxt(k), v: m.has(k) ? f(m.get(k)) : null }));
+  const cero = (f) => meses.map((k) => ({ label: mesTxt(k), v: m.has(k) ? f(m.get(k)) : 0 }));
+  const clientes = meses.map((k) => ({ label: mesTxt(k), partes: { Nuevo: num(m.get(k)?.nuevos), Recurrente: num(m.get(k)?.recurrentes) } }));
+  return `<h2 class="titulo-sec">Últimos 12 meses</h2><p class="sub">No dependen de las fechas elegidas arriba. Solo cuentan órdenes de la tienda conectada.</p>` +
+    desplegable("mfac", "Facturación por mes", "", grafico(cero((x) => num(x.revenue)), "barras", "var(--serie)", corto, (p) => `${p.label} · ${money(p.v)}`)) +
+    desplegable("mven", "Ventas por mes", "", grafico(cero((x) => num(x.ventas)), "barras", "var(--serie2)", (v) => nf0.format(v), (p) => `${p.label} · ${nf0.format(p.v)} ventas`)) +
+    desplegable("mtic", "Ticket promedio por mes", "", grafico(puntos((x) => (num(x.ventas) ? num(x.revenue) / num(x.ventas) : null)), "linea", "var(--s4)", corto, (p) => `${p.label} · ${p.v == null ? "—" : money(p.v)}`)) +
+    desplegable("mcli", "Clientes nuevos y recurrentes por mes", "", apiladas(clientes, ["Nuevo", "Recurrente"], (k) => (k === "Nuevo" ? "Nuevos" : "Recurrentes"))) +
+    desplegable("mpag", "Método de pago por mes", "", porMes(CLI.meses_pagos || [], pagoTxt)) +
+    desplegable("mcuo", "Cuotas por mes", "", porMes(CLI.meses_cuotas || [], (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`)));
 }
 function activarGraficos() {
   document.querySelectorAll(".chart").forEach((ch) => {
@@ -309,8 +384,8 @@ function vistaGeneral() {
       }).join("")}</tbody></table></div></section>` : "";
   return `<div class="cab"><div><h1>Tablero general</h1><p class="sub">${rangoTxt(rango())} · ${lista.length} clientes</p></div>${fuentes()}</div>
     <div class="kpis">
-      ${kpi("Inversión Meta", money(inv))}${kpi("Facturación tiendas", money(fac))}
-      ${kpi("MER global", merTxt(mer), "Solo clientes con tienda", merCls(mer))}${kpi("Clientes con ventas", nf0.format(conT.filter((c) => c.fac > 0).length), `de ${conT.length} con tienda`)}
+      ${kpi("Inversión Meta", money(inv), term ? "" : cambio(inv, num(GEN.prev?.spend)))}${kpi("Facturación tiendas", money(fac), term ? "" : cambio(fac, num(GEN.prev?.revenue)))}
+      ${kpi("MER global", merTxt(mer), (!term && num(GEN.prev?.spend) > 0 && cambio(mer, num(GEN.prev?.revenue) / num(GEN.prev?.spend))) || "Solo clientes con tienda", merCls(mer))}${kpi("Clientes con ventas", nf0.format(conT.filter((c) => c.fac > 0).length), `de ${conT.length} con tienda`)}
     </div>
     <section class="bloque">
       <div class="barra"><input class="buscar" id="q" type="search" placeholder="Buscar cliente" value="${esc(E.q)}" aria-label="Buscar cliente">
@@ -344,7 +419,7 @@ function vistaCliente() {
   const resumen = (v) => v;
   if (c.kind === "leads") {
     const msgs = dias.reduce((s, d) => s + num(d.messages), 0);
-    return nombre + `<div class="kpis">${kpi("Inversión Meta", money(spend))}${kpi("Mensajes", nf0.format(msgs))}${kpi("Costo por mensaje", msgs ? money(spend / msgs) : "—")}</div>` +
+    return nombre + `<div class="kpis">${kpi("Inversión Meta", money(spend), cambio(spend, num(CLI.prev?.spend)))}${kpi("Mensajes", nf0.format(msgs), cambio(msgs, num(CLI.prev?.messages)))}${kpi("Costo por mensaje", msgs ? money(spend / msgs) : "—")}</div>` +
       desplegable("inv", "Inversión por día", money(spend), unDia ? msg1() : grafico(dias.map((d) => ({ day: d.day, v: num(d.spend) })), "barras", "var(--serie)", corto, (p) => `${ddmm(p.day)} · ${money(p.v)}`)) +
       desplegable("msg", "Mensajes por día", nf0.format(msgs), unDia ? msg1() : grafico(dias.map((d) => ({ day: d.day, v: num(d.messages) })), "barras", "var(--serie2)", (v) => nf0.format(v), (p) => `${ddmm(p.day)} · ${nf0.format(p.v)} mensajes`));
   }
@@ -358,19 +433,22 @@ function vistaCliente() {
   const avisoCompradores = compradoresCargando ? "Cargando historial: puede dar alto" : "";
   const cac = nuevos > 0 && spend > 0 ? spend / nuevos : null;
   const puntos = (f) => dias.map((d) => ({ day: d.day, v: f(d) }));
-  const lista = conectada ? tablaOrdenes() : "";
+  const lista = conectada ? tablaProductos() + vistasPorMes() + tablaOrdenes() : "";
+  const P = CLI.prev || {}, pFac = num(P.revenue), pInv = num(P.spend), pVen = num(P.orders), pUni = num(P.unidades), pNue = num(P.nuevos);
+  const pMer = pInv > 0 ? pFac / pInv : null, unidades = num(CLI.unidades), pTic = pVen > 0 ? pFac / pVen : 0, pCac = pNue > 0 && pInv > 0 ? pInv / pNue : 0;
   const cortes = conectada
-    ? `<div class="tortas">${torta("Método de pago", CLI.pagos || [], pagoTxt)}${torta("Cuotas", CLI.cuotas || [], (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`))}${torta("Método de envío", CLI.envios || [], (k) => k)}${torta("Clientes nuevos y recurrentes", CLI.tipos || [], (k) => (k === "Nuevo" ? "Nuevos" : "Recurrentes"))}</div>`
+    ? `<div class="tortas">${torta("Método de pago", CLI.pagos || [], pagoTxt)}${torta("Cuotas", CLI.cuotas || [], (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`))}${torta("Método de envío", CLI.envios || [], (k) => k)}${torta("Proveedor de pago", CLI.pasarelas || [], (k) => k)}${torta("Clientes nuevos y recurrentes", CLI.tipos || [], (k) => (k === "Nuevo" ? "Nuevos" : "Recurrentes"))}</div>`
     : "";
   return nombre + avisoConexion(conectada) + `
     <div class="kpis">
-      ${kpi("Facturación Tiendanube", money(fac))}${kpi("Inversión Meta", money(spend))}
-      ${kpi("MER", merTxt(mer), "", merCls(mer))}${kpi("Ventas", hayOrdenes ? nf0.format(ventas) : "—", hayOrdenes ? "" : "Disponible al conectar")}
+      ${kpi("Facturación Tiendanube", money(fac), cambio(fac, pFac))}${kpi("Inversión Meta", money(spend), cambio(spend, pInv))}
+      ${kpi("MER", merTxt(mer), pMer ? cambio(mer, pMer) : "", merCls(mer))}${kpi("Ventas", hayOrdenes ? nf0.format(ventas) : "—", hayOrdenes ? cambio(ventas, pVen) : "Disponible al conectar")}
     </div>
     <div class="kpis chico">
-      ${kpi("Ticket promedio", hayOrdenes && ventas ? money(fac / ventas) : "—")}
-      ${kpi("CAC", cac == null ? "—" : money(cac), compradoresCargando ? "Cargando historial: puede dar bajo" : "Inversión ÷ clientes nuevos")}
-      ${kpi("Clientes nuevos", conectada ? nf0.format(nuevos) : "—", avisoCompradores || (conectada && nuevos + recs ? `${pct(nuevos, nuevos + recs)}% de las ventas` : ""))}
+      ${kpi("Ticket promedio", hayOrdenes && ventas ? money(fac / ventas) : "—", hayOrdenes && ventas ? cambio(fac / ventas, pTic) : "")}
+      ${kpi("Productos vendidos", conectada ? nf0.format(unidades) : "—", conectada ? cambio(unidades, pUni) : "")}
+      ${kpi("CAC", cac == null ? "—" : money(cac), compradoresCargando ? "Cargando historial: puede dar bajo" : (cac == null ? "" : cambio(cac, pCac)) || "Inversión ÷ clientes nuevos")}
+      ${kpi("Clientes nuevos", conectada ? nf0.format(nuevos) : "—", avisoCompradores || cambio(nuevos, pNue) || (conectada && nuevos + recs ? `${pct(nuevos, nuevos + recs)}% de las ventas` : ""))}
       ${kpi("Pendiente de pago", conectada ? money(num(CLI.pendiente?.total)) : "—", conectada ? `${nf0.format(num(CLI.pendiente?.ordenes))} ${num(CLI.pendiente?.ordenes) === 1 ? "orden" : "órdenes"}` : "")}
     </div>` +
     desplegable("fac", "Facturación por día", resumen(money(fac)), unDia ? msg1() : grafico(puntos((d) => num(d.revenue)), "barras", "var(--serie)", corto, (p) => `${ddmm(p.day)} · ${money(p.v)}`)) +
@@ -431,7 +509,7 @@ function vistaAgencia() {
     .map((c) => ({ ...c, s: num(c.spend), f: num(c.revenue) })).map((c) => ({ ...c, mer: c.s > 0 ? c.f / c.s : null }));
   const fac = dias.reduce((s, d) => s + num(d.revenue), 0), inv = dias.reduce((s, d) => s + num(d.spend), 0), mer = inv > 0 ? fac / inv : null;
   const pf = num(GEN.prev?.revenue), pi = num(GEN.prev?.spend), pm = pi > 0 ? pf / pi : null;
-  const dif = (a, b) => (b > 0 ? `${a >= b ? "▲" : "▼"} ${Math.abs(Math.round(((a - b) / b) * 100))}% contra el período anterior` : "");
+  const dif = cambio;
   const conInv = eco.filter((c) => c.mer != null);
   const g = conInv.filter((c) => c.mer >= 6), a = conInv.filter((c) => c.mer >= 3 && c.mer < 6), r = conInv.filter((c) => c.mer < 3);
   const seg = (l, col) => (l.length ? `<i style="flex:${l.length};background:${col}"></i>` : "");
@@ -446,7 +524,7 @@ function vistaAgencia() {
   return `<div class="cab"><div><h1>Cómo viene la agencia</h1><p class="sub">${rangoTxt(rango())} · sin clientes de leads</p></div>${fuentes()}</div>
     <div class="kpis">
       ${kpi("Facturación de clientes", money(fac), dif(fac, pf))}${kpi("Inversión gestionada", money(inv), dif(inv, pi))}
-      ${kpi("MER global", merTxt(mer), pm ? `Período anterior: ${merTxt(pm)}` : "", merCls(mer))}${kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`)}
+      ${kpi("MER global", merTxt(mer), pm ? cambio(mer, pm) : "", merCls(mer))}${kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`)}
     </div>` +
     desplegable("afac", "Facturación por día", money(fac), unDia ? msg1() : grafico(puntos((d) => num(d.revenue)), "barras", "var(--serie)", corto, (p) => `${ddmm(p.day)} · ${money(p.v)}`)) +
     desplegable("amer", "Retorno por día (MER)", merTxt(mer), unDia ? msg1() : grafico(puntos((d) => (num(d.spend) > 0 ? num(d.revenue) / num(d.spend) : null)), "linea", "var(--serie2)", merTxt, (p) => `${ddmm(p.day)} · MER ${merTxt(p.v)}`)) +

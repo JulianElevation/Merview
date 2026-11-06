@@ -33,6 +33,7 @@ await db.exec(`
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_compradores.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_fichas_portal.sql"), "utf8"));
+await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal_vistas.sql"), "utf8"));
 console.log("ok  la migración corre completa");
 
 const hoy = (await q(`select (now() at time zone 'America/Argentina/Buenos_Aires')::date::text d`))[0].d;
@@ -112,6 +113,27 @@ assert.equal(desp.ordenes.find((o) => o.number === 7).tipo, "Recurrente");
 assert.equal((await q(`select first_paid_at::date::text f from public.tn_buyers where buyer_hash='pp'`))[0].f, "2020-01-01", "se queda con la compra más vieja");
 assert.equal(desp.tiendas[0].buyers_done, false);
 console.log("ok  compradores de todo el historial");
+
+// Comparación, ranking y series por mes.
+await cargar([
+  orden(60, hoy, 3000, { unidades: 3, buyer_hash: "m1", items: [{ n: "Zapato (Azul, 38)", q: 2, p: 1000 }, { n: "Remera", q: 1, p: 1000 }] }),
+  orden(61, hoy, 1000, { unidades: 1, buyer_hash: "m2", items: [{ n: "Zapato (Negro, 40)", q: 1, p: 1000 }] }),
+  orden(62, dia(1), 900, { unidades: 9, buyer_hash: "m3", items: [{ n: "Remera", q: 9, p: 100 }] }),
+  orden(63, hoy, 500, { payment_status: "pending", unidades: 50, buyer_hash: "m4", items: [{ n: "Zapato", q: 50, p: 10 }] }),
+]);
+const vis = (await q(`select public.portal_cliente('clave','a',$1::date,$1::date) r`, [hoy]))[0].r;
+const jean = vis.productos.find((p) => p.nombre === "Zapato");
+assert.equal(Number(jean.unidades), 3, "agrupa variantes y solo cuenta ventas pagadas");
+assert.equal(Number(jean.total), 3000);
+assert.ok(Number(vis.unidades) >= 4);
+assert.ok(Number(vis.prev.unidades) >= 9, "unidades del período anterior");
+assert.ok(Number(vis.prev.revenue) >= 900);
+const mesHoy = hoy.slice(0, 7);
+assert.ok(Number(vis.meses.find((m) => m.mes === mesHoy).ventas) >= 4);
+assert.ok(vis.meses_pagos.some((m) => m.mes === mesHoy && m.k === "credit_card"));
+assert.ok(vis.meses_cuotas.some((m) => m.mes === mesHoy && Number(m.k) === 3));
+assert.ok(!JSON.stringify(vis).includes("buyer_hash"));
+console.log("ok  comparación, ranking y series por mes");
 
 // Ficha solo del portal: se ve en el portal, pero la lista que usa la carga de MER View sigue vacía.
 await db.exec(`insert into public.tn_installs (store_id, access_token, coverage_from) values ('1725892','tok','${dia(2)}')`);

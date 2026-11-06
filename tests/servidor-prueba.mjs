@@ -76,7 +76,15 @@ function cliente({ p_client: id, p_since: a, p_until: b, p_limit: lim }) {
     items: [{ n: "Jean recto azul talle 38", q: 1 + (i % 2), p: 45000 }, ...(i % 2 ? [{ n: "Remera lisa negra", q: 1, p: 15000 }] : [])],
     tipo: i % 2 ? "Nuevo" : "Recurrente",
   })) : [];
+  const meses = []; { const h = new Date(); for (let i = 11; i >= 0; i--) { const d = new Date(h.getFullYear(), h.getMonth() - i, 1); meses.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); } }
+  const mv = (m) => Math.round(80 + azar(c.id + m) * 220);
   return {
+    unidades: conectada ? Math.round(v * 1.4) : 0,
+    prev: { revenue: fac * 0.86, orders: v ? Math.round(v * 0.92) : null, spend: dias.reduce((x, d) => x + d.spend, 0) * 1.08, messages: 40, unidades: Math.round(v * 1.2), nuevos: Math.round(v * 0.5) },
+    productos: conectada ? ["Jean recto azul", "Remera lisa negra", "Campera de jean con un nombre bastante más largo de lo normal", "Pollera", "Buzo"].map((nombre, i) => ({ nombre, unidades: 120 - i * 21, total: (120 - i * 21) * 31000 })) : [],
+    meses: conectada ? meses.map((mes) => { const ventas = mv(mes), nuevos = Math.round(ventas * 0.68); return { mes, ventas, revenue: ventas * 52000, nuevos, recurrentes: ventas - nuevos }; }) : [],
+    meses_pagos: conectada ? meses.flatMap((mes) => [["credit_card", 0.5], ["wire_transfer", 0.25], ["wallet", 0.15], ["debit_card", 0.1]].map(([k, f]) => ({ mes, k, ventas: Math.round(mv(mes) * f) }))) : [],
+    meses_cuotas: conectada ? meses.flatMap((mes) => [[1, 0.5], [3, 0.3], [6, 0.2]].map(([k, f]) => ({ mes, k, ventas: Math.round(mv(mes) * f) }))) : [],
     ahora: new Date().toISOString(),
     cliente: { id: c.id, name: c.name, kind: c.kind, tn_stores: c.kind === "ecommerce" ? [c.id] : [], woo_shops: [], meta_accounts: ["m" + c.id] },
     tiendas: c.kind === "ecommerce" ? [{ store_id: c.id, conectada, coverage_from: conectada ? "2025-10-01" : null, last_sync_at: new Date(Date.now() - 120000).toISOString(), last_webhook_at: new Date(Date.now() - 60000).toISOString(), last_error: null }] : [],
@@ -84,7 +92,7 @@ function cliente({ p_client: id, p_since: a, p_until: b, p_limit: lim }) {
     pendiente: { total: conectada ? Math.round(fac * 0.08) : 0, ordenes: conectada ? Math.round(v * 0.1) : 0 },
     tipos: conectada ? [part("Nuevo", 0.62), part("Recurrente", 0.38)] : [],
     pagos: conectada ? [part("credit_card", 0.51), part("custom", 0.28), part("other", 0.13), part("debit_card", 0.08)] : [],
-    pasarelas: [],
+    pasarelas: conectada ? [part("Mercado Pago", 0.64), part("Pago Nube", 0.3), part("Transferencia", 0.06)] : [],
     cuotas: conectada ? [part(1, 0.52), part(3, 0.33), part(6, 0.15)] : [],
     envios: conectada ? [part("Andreani Estándar", 0.56), part("Andreani Sucursal", 0.27), part("Te vamos a contactar para coordinar la entrega", 0.09), part("Retiro en local", 0.04), part("Moto CABA", 0.02), part("OCA", 0.01), part("Correo", 0.01)] : [],
     ordenes_total: conectada ? total : 0, ordenes,
