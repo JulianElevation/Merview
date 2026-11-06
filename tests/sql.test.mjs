@@ -31,6 +31,7 @@ await db.exec(`
   update public.clients set active=false where id='x';
 `);
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal.sql"), "utf8"));
+await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_compradores.sql"), "utf8"));
 console.log("ok  la migración corre completa");
 
 const hoy = (await q(`select (now() at time zone 'America/Argentina/Buenos_Aires')::date::text d`))[0].d;
@@ -97,6 +98,20 @@ const r2 = (await q(`select public.portal_cliente('clave','a',$1::date,$1::date)
 assert.equal(r2.ordenes.find((o) => o.number === 1).tipo, "Recurrente", "historial cargado después corrige el tipo");
 console.log("ok  nuevos/recurrentes con historial cargado hacia atrás");
 
+// Un comprador de hace años, fuera de las órdenes guardadas, deja de contar como nuevo.
+const antes = (await q(`select public.portal_cliente('clave','a',$1::date,$1::date) r`, [hoy]))[0].r;
+assert.equal(antes.ordenes.find((o) => o.number === 2).tipo, "Recurrente");
+assert.equal(antes.ordenes.find((o) => o.number === 7).tipo, "Nuevo");
+await q(`select public.tn_upsert_buyers($1::jsonb)`, [JSON.stringify([
+  { store_id: "s1", buyer_hash: "pp", first_paid_at: "2020-01-01T10:00:00-03:00" },
+  { store_id: "s1", buyer_hash: "pp", first_paid_at: "2021-01-01T10:00:00-03:00" },
+])]);
+const desp = (await q(`select public.portal_cliente('clave','a',$1::date,$1::date) r`, [hoy]))[0].r;
+assert.equal(desp.ordenes.find((o) => o.number === 7).tipo, "Recurrente");
+assert.equal((await q(`select first_paid_at::date::text f from public.tn_buyers where buyer_hash='pp'`))[0].f, "2020-01-01", "se queda con la compra más vieja");
+assert.equal(desp.tiendas[0].buyers_done, false);
+console.log("ok  compradores de todo el historial");
+
 // Seguridad.
 await assert.rejects(q(`select public.portal_general('mala',now()::date,now()::date)`), /clave_invalida/);
 await assert.rejects(q(`select public.portal_cliente('mala','a',now()::date,now()::date)`), /clave_invalida/);
@@ -104,9 +119,9 @@ await assert.rejects(q(`select public.portal_cliente('clave','x',now()::date,now
 await assert.rejects(q(`select public.portal_general('clave','2020-01-01','2026-01-01')`), /rango_invalido/);
 const permisos = await q(`select
   has_table_privilege('anon','public.tn_installs','select') tok, has_table_privilege('anon','public.tn_orders','select') ord,
-  has_function_privilege('anon','public.tn_upsert_orders(jsonb)','execute') up, has_function_privilege('anon','public.portal_serie(date,date)','execute') serie,
+  has_function_privilege('anon','public.tn_upsert_orders(jsonb)','execute') up, has_function_privilege('anon','public.tn_upsert_buyers(jsonb)','execute') upb, has_function_privilege('anon','public.portal_serie(date,date)','execute') serie,
   has_function_privilege('anon','public.portal_general(text,date,date)','execute') gen`);
-assert.deepEqual(permisos[0], { tok: false, ord: false, up: false, serie: false, gen: true });
+assert.deepEqual(permisos[0], { tok: false, ord: false, up: false, upb: false, serie: false, gen: true });
 const txt = JSON.stringify(r2);
 assert.ok(!txt.includes("buyer_hash") && !txt.includes("access_token"), "no salen huellas ni tokens");
 console.log("ok  clave, permisos y datos que no salen");

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import {
-  clienteTN, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana,
+  BUYER_FIELDS, clienteTN, filasCompradores, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana, ventanaAtras,
 } from "../supabase/functions/tn-app/lib.ts";
 
 const res = (status, body, headers = {}) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers });
@@ -127,6 +127,31 @@ test("lee inversión y mensajes de Meta y sigue la paginación", async () => {
   assert.match(urls[0], /act_9\/insights/);
   await assert.rejects(insightsMeta("9", "t", "a", "b", async () => res(400, { error: { message: "token vencido" } })), /token vencido/);
   assert.equal(filasMeta("1", "ARS", [{ date_start: "d" }])[0].spend, 0);
+});
+
+test("del historial viejo solo pide lo mínimo y guarda quién compró", async () => {
+  const urls = [];
+  const f = async (u) => { urls.push(u); return res(200, [{ id: 1 }]); };
+  await clienteTN("7", "t", f).ordenes({ created_at_max: "x" }, BUYER_FIELDS);
+  assert.match(urls[0], /fields=id%2Ccontact_email%2Cpayment_status%2Cstatus%2Ccreated_at/);
+  assert.ok(!urls[0].includes("aggregates"));
+  const filas = await filasCompradores("7", [
+    { contact_email: "A@b.com ", payment_status: "paid", status: "open", created_at: "2020-01-01", contact_name: "Pepe" },
+    { contact_email: "c@d.com", payment_status: "pending", status: "open", created_at: "2020-01-02" },
+    { contact_email: "e@f.com", payment_status: "paid", status: "cancelled", created_at: "2020-01-03" },
+    { payment_status: "paid", status: "open", created_at: "2020-01-04" },
+  ], "s");
+  assert.equal(filas.length, 1);
+  assert.deepEqual(Object.keys(filas[0]).sort(), ["buyer_hash", "first_paid_at", "store_id"]);
+  assert.equal(filas[0].buyer_hash, (await normalizarOrden("7", { id: 1, created_at: "x", contact_email: "a@b.com" }, "s")).buyer_hash, "misma huella que las órdenes");
+  assert.ok(!JSON.stringify(filas).toLowerCase().includes("pepe") && !JSON.stringify(filas).includes("b.com"));
+});
+
+test("detecta cuándo terminó el historial de la tienda", async () => {
+  assert.equal(await clienteTN("7", "t", async () => res(404, { description: "Last page is 0" })).hayOrdenesAntes("x"), false);
+  assert.equal(await clienteTN("7", "t", async () => res(200, [{ id: 1 }])).hayOrdenesAntes("x"), true);
+  await assert.rejects(clienteTN("7", "t", async () => res(404, { description: "Invalid fields" })).hayOrdenesAntes("x"), /Invalid/);
+  assert.deepEqual(ventanaAtras("2020-03-02", 31), { desde: "2020-01-31", hasta: "2020-03-02" });
 });
 
 test("nombre de tienda en cualquier formato", () => {

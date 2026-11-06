@@ -354,6 +354,8 @@ function vistaCliente() {
   const ventas = dias.reduce((s, d) => s + num(d.orders), 0);
   const nuevos = dias.reduce((s, d) => s + num(d.nuevos), 0), recs = dias.reduce((s, d) => s + num(d.recurrentes), 0);
   const conectada = (CLI.tiendas || []).some((t) => t.conectada);
+  const compradoresCargando = (CLI.tiendas || []).some((t) => t.conectada && !t.buyers_done);
+  const avisoCompradores = compradoresCargando ? "Cargando historial: puede dar alto" : "";
   const cac = nuevos > 0 ? spend / nuevos : null;
   const puntos = (f) => dias.map((d) => ({ day: d.day, v: f(d) }));
   const lista = conectada ? tablaOrdenes() : "";
@@ -367,9 +369,9 @@ function vistaCliente() {
     </div>
     <div class="kpis chico">
       ${kpi("Ticket promedio", hayOrdenes && ventas ? money(fac / ventas) : "—")}
-      ${kpi("CAC", cac == null ? "—" : money(cac), "Inversión ÷ clientes nuevos")}
-      ${kpi("Clientes nuevos", conectada ? nf0.format(nuevos) : "—", conectada && nuevos + recs ? `${pct(nuevos, nuevos + recs)}% de las ventas` : "")}
-      ${kpi("Pendiente de pago", conectada ? money(num(CLI.pendiente?.total)) : "—", conectada ? `${nf0.format(num(CLI.pendiente?.ordenes))} órdenes` : "")}
+      ${kpi("CAC", cac == null ? "—" : money(cac), compradoresCargando ? "Cargando historial: puede dar bajo" : "Inversión ÷ clientes nuevos")}
+      ${kpi("Clientes nuevos", conectada ? nf0.format(nuevos) : "—", avisoCompradores || (conectada && nuevos + recs ? `${pct(nuevos, nuevos + recs)}% de las ventas` : ""))}
+      ${kpi("Pendiente de pago", conectada ? money(num(CLI.pendiente?.total)) : "—", conectada ? `${nf0.format(num(CLI.pendiente?.ordenes))} ${num(CLI.pendiente?.ordenes) === 1 ? "orden" : "órdenes"}` : "")}
     </div>` +
     desplegable("fac", "Facturación por día", resumen(money(fac)), unDia ? msg1() : grafico(puntos((d) => num(d.revenue)), "barras", "var(--serie)", corto, (p) => `${ddmm(p.day)} · ${money(p.v)}`)) +
     desplegable("mer", "Retorno por día (MER)", merTxt(mer), unDia ? msg1() : grafico(puntos((d) => (num(d.spend) > 0 ? num(d.revenue) / num(d.spend) : null)), "linea", "var(--serie2)", (v) => merTxt(v), (p) => `${ddmm(p.day)} · MER ${merTxt(p.v)}`)) +

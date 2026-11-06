@@ -7,6 +7,7 @@ export const ORDER_FIELDS = [
   "storefront", "gateway_name", "payment_details", "fulfillments", "contact_email", "products",
   "created_at", "paid_at", "cancelled_at", "updated_at",
 ].join(",");
+export const BUYER_FIELDS = "id,contact_email,payment_status,status,created_at";
 export const ORDER_EVENTS = [
   "order/created", "order/paid", "order/pending", "order/voided", "order/cancelled", "order/edited",
 ];
@@ -34,6 +35,12 @@ export async function firmaValida(secret: string, body: string, firma: string | 
   return igualSeguro(await hmacHex(secret, body), firma.trim().toLowerCase());
 }
 
+// Huella irreversible del mail, distinta para cada tienda.
+export async function huella(secreto: string, storeId: string, mailCrudo: unknown): Promise<string | null> {
+  const mail = typeof mailCrudo === "string" ? mailCrudo.trim().toLowerCase() : "";
+  return mail ? (await hmacHex(secreto, `${storeId}|${mail}`)).slice(0, 32) : null;
+}
+
 const numero = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 
 function envio(o: Record<string, any>): string | null {
@@ -44,7 +51,6 @@ function envio(o: Record<string, any>): string | null {
 // Se queda con los datos de la venta. Del comprador solo sale una huella irreversible del mail,
 // distinta para cada tienda, que sirve para saber si ya había comprado.
 export async function normalizarOrden(storeId: string, o: Record<string, any>, secreto: string) {
-  const mail = typeof o.contact_email === "string" ? o.contact_email.trim().toLowerCase() : "";
   const productos = Array.isArray(o.products) ? o.products : [];
   return {
     store_id: String(storeId),
@@ -69,7 +75,7 @@ export async function normalizarOrden(storeId: string, o: Record<string, any>, s
       q: Number(p.quantity) || 0,
       p: numero(p.price),
     })),
-    buyer_hash: mail ? (await hmacHex(secreto, `${storeId}|${mail}`)).slice(0, 32) : null,
+    buyer_hash: await huella(secreto, String(storeId), o.contact_email),
     created_at: o.created_at,
     paid_at: o.paid_at ?? null,
     cancelled_at: o.cancelled_at ?? null,
@@ -104,10 +110,11 @@ export function clienteTN(storeId: string, token: string, f: Fetcher = fetch, es
       return await r.json();
     },
     // Trae todas las páginas. Tiendanube responde 404 cuando no hay más resultados.
-    async ordenes(filtro: Record<string, string>) {
+    async ordenes(filtro: Record<string, string>, campos = ORDER_FIELDS) {
       const out: Record<string, any>[] = [];
       for (let page = 1; ; page++) {
-        const q = new URLSearchParams({ ...filtro, per_page: "200", page: String(page), aggregates: "fulfillment_orders", fields: ORDER_FIELDS });
+        const q = new URLSearchParams({ ...filtro, per_page: "200", page: String(page), fields: campos });
+        if (campos === ORDER_FIELDS) q.set("aggregates", "fulfillment_orders");
         const r = await llamar(`/orders?${q}`);
         if (r.status === 404) {
           // Solo "Last page" significa que no hay más. Cualquier otro 404 es un error de verdad.
@@ -121,6 +128,18 @@ export function clienteTN(storeId: string, token: string, f: Fetcher = fetch, es
         if (lote.length < 200) break;
       }
       return out;
+    },
+    // Dice si la tienda tiene alguna orden anterior a esa fecha.
+    async hayOrdenesAntes(fecha: string) {
+      const q = new URLSearchParams({ created_at_max: fecha, per_page: "1", fields: "id" });
+      const r = await llamar(`/orders?${q}`);
+      if (r.status === 404) {
+        const cuerpo = await r.text();
+        if (/last page/i.test(cuerpo)) return false;
+        throw new Error(`orders: HTTP 404 ${cuerpo.slice(0, 200)}`);
+      }
+      if (!r.ok) throw new Error(`orders: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
+      return (await r.json()).length > 0;
     },
     async tienda() {
       const r = await llamar("/store?fields=id,name,main_currency");
@@ -157,6 +176,20 @@ export function proximaVentana(coverageFrom: string | null, hoy: string, dias = 
   if (hasta <= tope) return null;
   const desde = new Date(Math.max(hasta.getTime() - dias * 864e5, tope.getTime()));
   return { desde: iso(desde), hasta: iso(hasta) };
+}
+
+export function ventanaAtras(hasta: string, dias = 31) {
+  const fin = new Date(hasta + "T12:00:00Z");
+  return { desde: new Date(fin.getTime() - dias * 864e5).toISOString().slice(0, 10), hasta };
+}
+
+// Del historial viejo solo queda quién compró y cuándo: una fila por venta pagada, sin nada más.
+export async function filasCompradores(storeId: string, ordenes: Record<string, any>[], secreto: string) {
+  const pagadas = ordenes.filter((o) => o.payment_status === "paid" && o.status !== "cancelled" && o.created_at);
+  const filas = await Promise.all(pagadas.map(async (o) => ({
+    store_id: String(storeId), buyer_hash: await huella(secreto, String(storeId), o.contact_email), first_paid_at: o.created_at,
+  })));
+  return filas.filter((f) => f.buyer_hash);
 }
 
 const MENSAJES = "onsite_conversion.messaging_conversation_started_7d";

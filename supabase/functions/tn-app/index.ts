@@ -3,8 +3,8 @@
 //        POST /privacy/{store-redact,customer-redact,customers-data-request}
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import {
-  APP_EVENTS, clienteTN, DIAS_HISTORIA, firmaValida, igualSeguro, insightsMeta, nombreTienda,
-  normalizarOrden, ORDER_EVENTS, proximaVentana,
+  APP_EVENTS, BUYER_FIELDS, clienteTN, DIAS_HISTORIA, filasCompradores, firmaValida, igualSeguro, insightsMeta,
+  nombreTienda, normalizarOrden, ORDER_EVENTS, proximaVentana, ventanaAtras,
 } from "./lib.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -69,6 +69,22 @@ async function bajarHistorial(storeId: string, token: string, coverageFrom: stri
   return true;
 }
 
+// Después de las órdenes, recorre el resto de la tienda para saber quién ya había comprado.
+async function bajarCompradores(storeId: string, token: string, cursor: string) {
+  const tn = clienteTN(storeId, token);
+  const tope = `${cursor}T00:00:00-03:00`;
+  if (!await tn.hayOrdenesAntes(tope)) { await marcar(storeId, { buyers_done: true, last_error: null }); return null; }
+  const v = ventanaAtras(cursor);
+  const ordenes = await tn.ordenes({ created_at_min: `${v.desde}T00:00:00-03:00`, created_at_max: tope }, BUYER_FIELDS);
+  const filas = await filasCompradores(storeId, ordenes, CLIENT_SECRET);
+  for (let i = 0; i < filas.length; i += 500) {
+    const { error } = await db.rpc("tn_upsert_buyers", { p_rows: filas.slice(i, i + 500) });
+    if (error) throw new Error(`compradores: ${error.message}`);
+  }
+  await marcar(storeId, { buyers_until: v.desde, last_error: null });
+  return v.desde;
+}
+
 async function callback(url: URL) {
   const code = url.searchParams.get("code");
   if (!code) return volver({ error: "sin_codigo" });
@@ -93,7 +109,7 @@ async function callback(url: URL) {
     store_id: storeId, access_token: data.access_token, scope: data.scope, store_name: nombre,
     currency: (tienda as { main_currency?: string }).main_currency ?? null,
     installed_at: new Date().toISOString(), uninstalled_at: null, last_error: null,
-    coverage_from: null, backfill_done: false,
+    coverage_from: null, backfill_done: false, buyers_until: null, buyers_done: false,
   });
   if (error) { console.error("guardar instalación", error.message); return volver({ error: "no_se_guardo" }); }
 
@@ -161,7 +177,19 @@ async function sync(req: Request) {
       } catch (e) { await marcar(t.store_id, { last_error: texto(e) }); return; }
     }
   });
-  return responder(200, { tiendas: tiendas?.length ?? 0, ordenes, fallas, meses });
+  // Y cuando termina el historial de órdenes, sigue con los compradores más viejos.
+  const { data: conCompradores } = await db.from("tn_installs")
+    .select("store_id,access_token,coverage_from,buyers_until")
+    .not("access_token", "is", null).eq("backfill_done", true).eq("buyers_done", false);
+  let tramos = 0;
+  await enParalelo(conCompradores ?? [], 4, async (t) => {
+    let cursor: string | null = t.buyers_until ?? t.coverage_from;
+    while (cursor && Date.now() - inicio < PRESUPUESTO_MS) {
+      try { cursor = await bajarCompradores(t.store_id, t.access_token, cursor); if (cursor) tramos++; }
+      catch (e) { await marcar(t.store_id, { last_error: texto(e) }); return; }
+    }
+  });
+  return responder(200, { tiendas: tiendas?.length ?? 0, ordenes, fallas, meses, tramos });
 }
 
 async function metaSync(req: Request) {

@@ -9,6 +9,7 @@ drop function if exists public.portal_cliente(text,text,date,date,integer,intege
 drop function if exists public.portal_general(text,date,date);
 drop function if exists public.portal_serie(date,date);
 drop function if exists public.meta_upsert(jsonb);
+drop function if exists public.tn_upsert_buyers(jsonb);
 drop function if exists public.tn_upsert_orders(jsonb);
 drop function if exists public.tn_cuenta_como_venta(text,text);
 drop table if exists public.meta_state;

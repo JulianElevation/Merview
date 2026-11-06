@@ -29,7 +29,7 @@ Master Metrics ── cada 2 h (lo que ya existía) ────┘ solo para lo
 
 - **Facturación y ventas**: órdenes pagadas y no canceladas, por fecha de creación, en hora de Buenos Aires. La regla está en `tn_cuenta_como_venta`. A validar contra Tiendanube con la primera tienda.
 - **MER**: facturación ÷ inversión.
-- **CAC**: inversión ÷ clientes nuevos. Nuevo es quien compra por primera vez según el historial cargado (hasta 400 días), así que puede contar como nuevo a alguien que compró antes de ese período.
+- **CAC**: inversión ÷ clientes nuevos. Nuevo es quien compra por primera vez en todo el historial de la tienda, identificado por la huella del mail. Mientras el historial de compradores carga, el portal avisa que el dato puede dar alto.
 - **Clientes**: no se guardan datos personales. Del mail queda una huella HMAC irreversible, distinta por tienda.
 - Las cuentas de Meta en USD se pasan a pesos con `settings.usd_ars`.
 
@@ -56,7 +56,7 @@ Master Metrics ── cada 2 h (lo que ya existía) ────┘ solo para lo
 ## Orden de activación
 
 1. Aplicar `supabase/migrations/20261106_portal.sql`.
-2. Aplicar `supabase/migrations/20261106_portal_cron.sql`.
+2. Aplicar `supabase/migrations/20261106_portal_cron.sql` y `20261106_compradores.sql`.
 3. Redeployar la función `tn-app` con `index.ts` y `lib.ts`, con `verify_jwt` apagado.
 4. Cargar secretos y `app_id`.
 5. Publicar `portal.html`, `portal.js` y `privacidad.html`.
