@@ -59,6 +59,21 @@ function general({ p_since: a, p_until: b }) {
   };
 }
 
+const BAJAS = [], MOV = [
+  { id: 2, client_id: "x", name: "Marca que se fue", tipo: "baja", fecha: new Date().toISOString().slice(0, 8) + "02", motivo: "Dejó de invertir" },
+  { id: 1, client_id: "a", name: "Tienda de prueba A", tipo: "alta", fecha: "2026-09-15", motivo: null },
+];
+function agencia() {
+  const extra = { a: {}, b: { sin_gasto_8h: true }, c: { inv_ayer: 0 }, d: { ult_venta: "2026-11-01", dias_sin_venta: 5, fac_7: 100000, fac_7_prev: 400000 }, e: {}, f: { inv_30: 0 }, g: { inv_ayer: 0, sin_gasto_8h: true } };
+  return {
+    ahora: new Date().toISOString(), foto_lista: true,
+    clientes: CLIENTES.map((c) => ({ id: c.id, name: c.name, kind: c.kind, con_meta: true, inv_hoy: 5000, inv_ayer: 5000, inv_30: 90000, fac_7: 500000, fac_7_prev: 500000, tiendas_vivas: c.vivo, ult_venta: new Date().toISOString().slice(0, 10), dias_sin_venta: 0, sin_gasto_8h: false, ...(extra[c.id] || {}) })),
+    movimientos: MOV,
+    inactivos: BAJAS.map((c) => ({ id: c.id, name: c.name })),
+    tiendas_libres: [{ id: "99", name: "Tienda nueva conectada" }],
+  };
+}
+
 function cliente({ p_client: id, p_since: a, p_until: b, p_limit: lim }) {
   const c = CLIENTES.find((x) => x.id === id);
   if (!c) return null;
@@ -116,6 +131,15 @@ createServer(async (req, res) => {
     }
     if (a.p_key !== "prueba") { res.statusCode = 400; return res.end(JSON.stringify({ message: "clave_invalida" })); }
     if (m[1] === "portal_link_cliente") return res.end(JSON.stringify(a.p_renovar ? "cliente-a-nuevo" : "cliente-a"));
+    if (m[1] === "portal_agencia") return res.end(JSON.stringify(agencia()));
+    if (m[1] === "portal_baja_cliente") { const c = CLIENTES.find((x) => x.id === a.p_client); CLIENTES.splice(CLIENTES.indexOf(c), 1); BAJAS.push(c); MOV.unshift({ id: MOV.length + 1, client_id: c.id, name: c.name, tipo: "baja", fecha: a.p_fecha, motivo: a.p_motivo }); return res.end("null"); }
+    if (m[1] === "portal_reactivar_cliente") { const c = BAJAS.find((x) => x.id === a.p_client); BAJAS.splice(BAJAS.indexOf(c), 1); CLIENTES.push(c); MOV.unshift({ id: MOV.length + 1, client_id: c.id, name: c.name, tipo: "alta", fecha: a.p_fecha, motivo: null }); return res.end("null"); }
+    if (m[1] === "portal_alta_cliente") {
+      if (CLIENTES.some((x) => x.name === a.p_nombre)) { res.statusCode = 400; return res.end(JSON.stringify({ message: "cliente_existente" })); }
+      const c = { id: a.p_nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name: a.p_nombre, kind: a.p_leads ? "leads" : "ecommerce", peso: 0.3, vivo: a.p_tienda ? 1 : 0 };
+      CLIENTES.push(c); MOV.unshift({ id: MOV.length + 1, client_id: c.id, name: c.name, tipo: "alta", fecha: a.p_fecha, motivo: null });
+      return res.end(JSON.stringify(c.id));
+    }
     return res.end(JSON.stringify(m[1] === "portal_general" ? general(a) : cliente(a)));
   }
   if (url.pathname === "/config.js") {

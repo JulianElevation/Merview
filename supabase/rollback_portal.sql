@@ -2,9 +2,16 @@
 -- OJO: borra tokens e historial; después habría que reconectar cada tienda.
 do $$ begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
-    perform cron.unschedule(jobname) from cron.job where jobname in ('tn-reconciliar','meta-sync','tn-limpiar');
+    perform cron.unschedule(jobname) from cron.job where jobname in ('tn-reconciliar','meta-sync','tn-limpiar','meta-foto');
   end if;
 end $$;
+drop function if exists public.portal_alta_cliente(text,text,boolean,text,text,date,text);
+drop function if exists public.portal_reactivar_cliente(text,text,date,text);
+drop function if exists public.portal_baja_cliente(text,text,date,text);
+drop function if exists public.portal_agencia(text);
+drop function if exists public.meta_foto_tomar();
+drop table if exists public.meta_foto;
+drop table if exists public.client_movimientos;
 drop function if exists public.portal_link_cliente(text,text,boolean);
 drop function if exists public.portal_mi_tablero(text,date,date,integer,integer);
 drop function if exists public.portal_cliente(text,text,date,date,integer,integer);

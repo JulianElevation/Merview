@@ -67,8 +67,8 @@ function ultimosMeses() {
 }
 
 /* ---------- Estado ---------- */
-const E = { v: "general", c: null, p: "mes", desde: null, hasta: null, q: "", soloActivos: true, sortK: "spend", sortDir: -1, limite: 100, graf: { ms: ["fac"], p: "arriba", g: null, desde: null, hasta: null, tabla: false } };
-let clave = null, GEN = null, CLI = null, ultimaOk = null, turno = 0, timer = null, ultimoNumero = null, sondeo = false, primeraVez = true;
+const E = { v: "general", c: null, p: "mes", desde: null, hasta: null, q: "", soloActivos: true, sortK: "spend", sortDir: -1, limite: 100, graf: { ms: ["fac"], p: "arriba", g: null, desde: null, hasta: null, tabla: false }, agMer: "r", agForm: null, agErr: null };
+let AG = null, agCuando = 0, agError = null, clave = null, GEN = null, CLI = null, ultimaOk = null, turno = 0, timer = null, ultimoNumero = null, sondeo = false, primeraVez = true;
 
 function leerUrl() {
   const u = new URLSearchParams(location.search);
@@ -149,8 +149,10 @@ async function cargar(opts = {}) {
     GEN = rg; CLI = rc; ultimaOk = Date.now(); sondeo = !!opts.silencio;
     if (modoCliente) E.c = CLI.cliente.id;
     $("login").hidden = true; $("app").hidden = false;
-    pintar();
+    // Con un formulario abierto no se repinta en vivo: se perdería lo que se está escribiendo.
+    if (!(opts.silencio && E.v === "agencia" && E.agForm)) pintar();
     sondeo = false;
+    if (E.v === "agencia") traerAg();
     primeraVez = false;
   } catch (e) {
     if (t !== turno) return;
@@ -161,6 +163,50 @@ async function cargar(opts = {}) {
     if (primeraVez) return bloquear(modoCliente ? "No se pudieron traer los datos. Probá de nuevo en unos minutos." : "No se pudo cargar el portal: " + e.message);
     if (!opts.silencio) $("vista").innerHTML = `<div class="aviso err">No se pudieron traer los datos (${esc(e.message)}). Probá de nuevo en unos segundos.</div>`;
   } finally { pulso(); }
+}
+async function traerAg(forzar) {
+  if (!forzar && Date.now() - agCuando < 120000 && AG) return;
+  agCuando = Date.now();
+  try {
+    AG = await rpc("portal_agencia", {});
+    agError = null;
+  } catch (e) { agError = e.message; }
+  if (E.v === "agencia" && !E.agForm) pintar();
+}
+const ERR_AG = { nombre_invalido: "Poné el nombre del cliente.", cliente_existente: "Ya hay un cliente con ese nombre.", cuenta_invalida: "El ID de la cuenta de Meta no parece correcto.", tienda_no_disponible: "Esa tienda ya está asignada a otro cliente.", cliente_inexistente: "Ese cliente ya no está disponible." };
+async function guardarMovimiento(accion) {
+  const v = (id) => $(id)?.value.trim() || null, fecha = v("agFecha");
+  E.agErr = null;
+  try {
+    let hecho;
+    if (accion === "agBaja") {
+      const id = v("agCliente");
+      if (!id) { E.agErr = "Elegí qué cliente se da de baja."; return pintar(); }
+      const nombre = $("agCliente").selectedOptions[0].textContent;
+      if (!confirm(`¿Dar de baja a ${nombre}? Sale de General, MER View y las cargas. Se puede volver a activar.`)) return;
+      await rpc("portal_baja_cliente", { p_client: id, p_fecha: fecha, p_motivo: v("agMotivo") });
+      hecho = `${nombre} quedó dado de baja.`;
+    } else if (accion === "agReactivar") {
+      const id = v("agVuelve");
+      if (!id) { E.agErr = "Elegí qué cliente vuelve."; return pintar(); }
+      await rpc("portal_reactivar_cliente", { p_client: id, p_fecha: fecha });
+      hecho = `${$("agVuelve").selectedOptions[0].textContent} volvió a estar activo.`;
+    } else {
+      const nombre = v("agNombre");
+      if (!nombre) { E.agErr = ERR_AG.nombre_invalido; return pintar(); }
+      await rpc("portal_alta_cliente", { p_nombre: nombre, p_leads: v("agTipo") === "leads", p_tienda: v("agTienda"), p_meta: v("agMeta"), p_fecha: fecha });
+      hecho = `${nombre} quedó dado de alta.`;
+    }
+    E.agForm = null;
+    const a = $("aviso"); a.textContent = hecho; a.className = "aviso ok"; a.hidden = false;
+    AG = null; agCuando = 0;
+    await cargar({ silencio: true });
+    pintar();
+  } catch (e) {
+    const clave = Object.keys(ERR_AG).find((k) => e.message.includes(k));
+    E.agErr = clave ? ERR_AG[clave] : "No se pudo guardar: " + e.message;
+    pintar();
+  }
 }
 function pulso() {
   const el = $("vivo");
@@ -178,7 +224,7 @@ function programar() {
 
 /* ---------- Controles ---------- */
 function pintarControles() {
-  document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === E.v ? "true" : "false"));
+  document.querySelectorAll("[data-v]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === E.v ? "true" : "false"));
   document.querySelectorAll("#fechas button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.p === E.p ? "true" : "false"));
   $("rango").hidden = E.p !== "rango";
   const [a, b] = rango();
@@ -586,7 +632,8 @@ function grafCuerpo() {
   const des = lista.filter((m) => m.tipo === "desglose");
   const desgloses = des.length ? `<div class="graf-des"><span>Desglose</span>${des.map((m) => `<button type="button" data-gm="${m.id}" data-n="${m.id === m0.id ? 1 : 0}" aria-pressed="${m.id === m0.id}">${icono(m.id)}${esc(m.t)}</button>`).join("")}</div>` : "";
   const aviso = mets.length > 1 && mets[0].gr !== mets[1].gr && !E.graf.tabla ? '<p class="graf-nota">Cada métrica usa su propia escala: compará la tendencia y leé los valores escritos.</p>' : "";
-  return `<div class="graf-cab">${leyenda}<small class="graf-rango">${esc(rangoLeg)}</small></div>
+  const chips = E.v === "agencia" ? `<div class="graf-des graf-chips"><span>Mirar</span>${lista.map((m) => `<button type="button" data-gm="${m.id}" aria-pressed="${mets.some((x) => x.id === m.id)}">${icono(m.id)}${esc(m.t)}</button>`).join("")}</div>` : "";
+  return `${chips}<div class="graf-cab">${leyenda}<small class="graf-rango">${esc(rangoLeg)}</small></div>
     <div class="graf-ctl">${controles}</div>
     ${grafDibujo(mets)}${aviso}${desgloses}`;
 }
@@ -780,40 +827,96 @@ function tablaOrdenes() {
 }
 
 /* ---------- Vista: Agencia ---------- */
+const ALERTA_DIAS = 3, CAIDA = 0.3;
+function alertas() {
+  if (agError && !AG) return '<div class="aviso err">No se pudieron traer las alertas. Probá de nuevo en unos minutos.</div>';
+  if (!AG) return '<div class="skel" style="height:150px"></div>';
+  const mes = hoyBA().slice(0, 7);
+  const activos = AG.clientes.filter((c) => c.con_meta && num(c.inv_30) > 0);
+  const venden = AG.clientes.filter((c) => c.kind !== "leads" && num(c.tiendas_vivas) > 0 && num(c.inv_30) > 0);
+  const fila = (c, val) => `<li data-id="${esc(c.id)}" tabindex="0"><span>${esc(c.name)}</span><b>${val}</b></li>`;
+  const tarjeta = (ic, titulo, ayuda, items, vacio, grave) => `<section class="alerta ${items.length ? (grave ? "mal" : "ojo") : "bien"}">
+    <h3>${icono(ic)}<span>${esc(titulo)}</span><b>${items.length}</b></h3><p>${esc(ayuda)}</p>
+    ${items.length ? `<ul class="lista">${items.join("")}</ul>` : `<p class="alerta-ok">${esc(vacio)}</p>`}</section>`;
+  const sin8 = AG.foto_lista ? activos.filter((c) => c.sin_gasto_8h) : [];
+  const sinAyer = activos.filter((c) => !(num(c.inv_ayer) > 0));
+  const sinVenta = venden.filter((c) => c.ult_venta == null || num(c.dias_sin_venta) >= ALERTA_DIAS)
+    .sort((a, b) => (b.ult_venta == null) - (a.ult_venta == null) || num(b.dias_sin_venta) - num(a.dias_sin_venta));
+  const caida = venden.filter((c) => num(c.fac_7_prev) > 0 && num(c.fac_7) < num(c.fac_7_prev) * (1 - CAIDA))
+    .map((c) => ({ ...c, cae: 1 - num(c.fac_7) / num(c.fac_7_prev) })).sort((a, b) => b.cae - a.cae);
+  const bajas = AG.movimientos.filter((m) => m.tipo === "baja" && String(m.fecha).slice(0, 7) === mes);
+  return `<div class="alertas">
+    ${tarjeta("inv", "Sin gasto en 8 horas", AG.foto_lista ? "La inversión no se movió desde hace 8 horas." : "Empieza a medir 8 horas después de activarse.", sin8.map((c) => fila(c, "Frenado")), AG.foto_lista ? "Todos están gastando." : "Todavía midiendo.", true)}
+    ${tarjeta("inv", "Sin gasto ayer", "Invirtieron en los últimos 30 días, pero ayer no.", sinAyer.map((c) => fila(c, "$ 0")), "Todos gastaron ayer.", true)}
+    ${tarjeta("ven", `Sin ventas hace ${ALERTA_DIAS} días o más`, "Tiendas conectadas que siguen con inversión.", sinVenta.map((c) => fila(c, c.ult_venta == null ? "Sin ventas" : `${nf0.format(num(c.dias_sin_venta))} días`)), "Todos vendieron en estos días.", true)}
+    ${tarjeta("mer", "Cayó la facturación", "Últimos 7 días contra los 7 anteriores, caída del 30% o más.", caida.map((c) => fila(c, `▼ ${Math.round(c.cae * 100)}%`)), "Nadie cayó tanto.", false)}
+    ${tarjeta("cli", "Bajas de este mes", "Clientes que se fueron este mes.", bajas.map((m) => `<li><span>${esc(m.name)}</span><b>${ddmm(String(m.fecha).slice(0, 10))}</b></li>`), "Ninguna baja este mes.", false)}
+  </div>`;
+}
+function bloqueMer(conInv) {
+  const grupos = { g: conInv.filter((c) => c.mer >= 6), m: conInv.filter((c) => c.mer >= 3 && c.mer < 6), r: conInv.filter((c) => c.mer < 3) };
+  const color = { g: "var(--good)", m: "var(--mid)", r: "var(--bad)" }, texto = { g: "con 6 o más", m: "entre 3 y 6", r: "con menos de 3" };
+  const seg = (k) => (grupos[k].length ? `<button type="button" data-agmer="${k}" aria-pressed="${E.agMer === k}" aria-label="${grupos[k].length} clientes ${texto[k]}" style="flex:${grupos[k].length};background:${color[k]}"></button>` : "");
+  const chip = (k) => `<button type="button" class="mer-chip" data-agmer="${k}" aria-pressed="${E.agMer === k}"><i style="background:${color[k]}"></i><b>${grupos[k].length}</b> ${texto[k]}</button>`;
+  const lista = E.agMer ? [...grupos[E.agMer]].sort((a, b) => a.mer - b.mer) : [];
+  const tabla = E.agMer ? (lista.length ? `<div class="tablebox"><table><thead><tr><th>Cliente</th><th>MER</th><th>Facturación</th><th>Inversión</th></tr></thead><tbody>${lista.map((c) => `<tr class="fila" tabindex="0" data-id="${esc(c.id)}"><td class="nom"><b>${esc(c.name)}</b></td><td><b class="${merCls(c.mer)}">${merTxt(c.mer)}</b></td><td>${money(c.f)}</td><td>${money(c.s)}</td></tr>`).join("")}</tbody></table></div>` : '<p class="sub" style="padding:0 16px 14px">Ningún cliente en este grupo.</p>') : "";
+  return `<section class="bloque"><h2>Clientes por MER</h2><p class="sub" style="padding:0 16px">Tocá un color para ver quiénes están ahí. Mismas fechas que arriba.</p>
+    <div class="semaforo sem-btn">${seg("g")}${seg("m")}${seg("r")}</div>
+    <div class="semaforoley">${chip("r")}${chip("m")}${chip("g")}</div>${tabla}</section>`;
+}
+function bloqueTiendas(link) {
+  const tn = GEN.clientes.filter((c) => c.tn_stores.length);
+  const conectados = tn.filter((c) => num(c.tiendas_vivo) >= c.tn_stores.length), faltan = tn.filter((c) => num(c.tiendas_vivo) < c.tn_stores.length);
+  return `<section class="bloque"><h2>Tiendas conectadas en vivo</h2><p class="sub" style="padding:0 16px">${conectados.length} de ${tn.length} clientes con Tiendanube.</p>
+    <div class="prog"><i style="width:${tn.length ? (conectados.length / tn.length) * 100 : 0}%"></i></div>
+    ${faltan.length ? `<div class="faltan"><span class="sub">Faltan conectar (${faltan.length})</span>${link ? `<button type="button" class="btn" id="copiarApp" data-url="${esc(link)}">Copiar link de la app</button>` : ""}</div>
+      <ul class="lista lista-alta">${faltan.sort((x, y) => x.name.localeCompare(y.name, "es")).map((c) => `<li data-id="${esc(c.id)}" tabindex="0"><span>${esc(c.name)}</span><b class="sub">Ver</b></li>`).join("")}</ul>` : '<p class="alerta-ok" style="padding:8px 16px 14px">Están todas conectadas.</p>'}</section>`;
+}
+function bloqueMovimientos() {
+  if (!AG) return "";
+  const hoy = hoyBA(), mes = hoy.slice(0, 7), este = AG.movimientos.filter((m) => String(m.fecha).slice(0, 7) === mes);
+  const nAlt = este.filter((m) => m.tipo === "alta").length, nBaj = este.filter((m) => m.tipo === "baja").length;
+  const fechaInp = `<label>Fecha<input type="date" id="agFecha" value="${hoy}" max="${hoy}"></label>`, motivo = (t) => `<label class="ancho">${t}<input type="text" id="agMotivo" maxlength="300" placeholder="Opcional"></label>`;
+  const activos = [...GEN.clientes].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  const forms = {
+    baja: `<label class="ancho">Cliente<select id="agCliente"><option value="">Elegí un cliente</option>${activos.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("")}</select></label>${fechaInp}${motivo("Motivo")}
+      <p class="sub ancho">Sale de General, MER View y las cargas. Conserva su historial y se puede volver a activar.</p><div class="ancho"><button type="button" class="btn peligro" id="agBaja">Dar de baja</button></div>`,
+    alta: `<label class="ancho">Nombre del cliente<input type="text" id="agNombre" maxlength="80" autocomplete="off"></label>
+      <label>Tipo<select id="agTipo"><option value="">Tienda online</option><option value="leads">Leads</option></select></label>
+      <label>Tienda conectada<select id="agTienda"><option value="">${AG.tiendas_libres.length ? "Todavía ninguna" : "No hay tiendas sin asignar"}</option>${AG.tiendas_libres.map((t) => `<option value="${esc(t.id)}">${esc(t.name || t.id)}</option>`).join("")}</select></label>
+      <label>Cuenta de Meta (ID)<input type="text" id="agMeta" inputmode="numeric" placeholder="Opcional"></label>${fechaInp}
+      <div class="ancho"><button type="button" class="btn pri" id="agAlta">Dar de alta</button></div>
+      ${AG.inactivos.length ? `<div class="ancho volver"><span class="sub">¿Vuelve un cliente que se había ido?</span><select id="agVuelve"><option value="">Elegí un cliente</option>${AG.inactivos.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("")}</select><button type="button" class="btn" id="agReactivar">Volver a activar</button></div>` : ""}`,
+  };
+  const form = E.agForm ? `<div class="ag-form">${E.agErr ? `<p class="aviso err ancho" style="margin:0">${esc(E.agErr)}</p>` : ""}${forms[E.agForm]}</div>` : "";
+  const hist = AG.movimientos.slice(0, 12);
+  return `<section class="bloque"><div class="ag-cab"><div><h2>Altas y bajas</h2><p class="sub">Este mes: ${nAlt} ${nAlt === 1 ? "alta" : "altas"} y ${nBaj} ${nBaj === 1 ? "baja" : "bajas"}.</p></div>
+      <div class="ag-btns"><button type="button" class="btn" data-agform="alta" aria-pressed="${E.agForm === "alta"}">Registrar alta</button><button type="button" class="btn" data-agform="baja" aria-pressed="${E.agForm === "baja"}">Registrar baja</button></div></div>
+    ${form}
+    ${hist.length ? `<div class="tablebox"><table><thead><tr><th>Cliente</th><th>Movimiento</th><th>Fecha</th><th class="izq hm">Motivo</th></tr></thead><tbody>${hist.map((m) => `<tr><td class="nom"><b>${esc(m.name)}</b></td><td><span class="tag ${m.tipo === "alta" ? "ok" : "mal"}">${m.tipo === "alta" ? "Alta" : "Baja"}</span></td><td>${esc(ddmm(String(m.fecha).slice(0, 10)))}/${esc(String(m.fecha).slice(2, 4))}</td><td class="izq hm" style="white-space:normal">${esc(m.motivo || "—")}</td></tr>`).join("")}</tbody></table></div>` : '<p class="sub" style="padding:0 16px 14px">Todavía no hay movimientos cargados.</p>'}</section>`;
+}
 function vistaAgencia() {
   const dias = diasCompletos(GEN.dias || []);
   const eco = GEN.clientes.filter((c) => c.kind !== "leads" && c.tn_stores.length + c.woo_shops.length > 0)
     .map((c) => ({ ...c, s: num(c.spend), f: num(c.revenue) })).map((c) => ({ ...c, mer: c.s > 0 ? c.f / c.s : null }));
   const fac = dias.reduce((s, d) => s + num(d.revenue), 0), inv = dias.reduce((s, d) => s + num(d.spend), 0), mer = inv > 0 ? fac / inv : null;
   const pf = num(GEN.prev?.revenue), pi = num(GEN.prev?.spend), pm = pi > 0 ? pf / pi : null;
-  const dif = cambio;
   const conInv = eco.filter((c) => c.mer != null);
-  const g = conInv.filter((c) => c.mer >= 6), a = conInv.filter((c) => c.mer >= 3 && c.mer < 6), r = conInv.filter((c) => c.mer < 3);
-  const seg = (l, col) => (l.length ? `<i style="flex:${l.length};background:${col}"></i>` : "");
-  const li = (c, val) => `<li data-id="${esc(c.id)}" tabindex="0"><span>${esc(c.name)}</span><b>${val}</b></li>`;
-  const top = [...eco].sort((x, y) => y.f - x.f).slice(0, 8);
-  const bajos = [...conInv].sort((x, y) => x.mer - y.mer).slice(0, 8);
-  const tn = GEN.clientes.filter((c) => c.tn_stores.length);
-  const conectados = tn.filter((c) => num(c.tiendas_vivo) >= c.tn_stores.length), faltan = tn.filter((c) => num(c.tiendas_vivo) < c.tn_stores.length);
+  const top = [...eco].filter((c) => c.f > 0).sort((x, y) => y.f - x.f).slice(0, 10), totTop = eco.reduce((s, c) => s + c.f, 0);
   const link = GEN.app_id ? `https://www.tiendanube.com/apps/${encodeURIComponent(GEN.app_id)}/authorize` : null;
-  return `<div class="cab"><div><h1>Cómo viene la agencia</h1><p class="sub">${rangoTxt(rango())} · sin clientes de leads</p></div>${fuentes()}</div>
-    ${tiles({
-      fac: [money(fac), dif(fac, pf)],
-      inv: [money(inv), dif(inv, pi)],
-      mer: [merTxt(mer), pm ? cambio(mer, pm) : "", merCls(mer)],
-    }, [kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`, "", "tie")])}` +
-    bloqueGraf() +
-    `<section class="bloque"><h2>Clientes por MER</h2>
-      <div class="semaforo" role="img" aria-label="Distribución de clientes por MER">${seg(g, "var(--good)")}${seg(a, "var(--mid)")}${seg(r, "var(--bad)")}</div>
-      <div class="semaforoley"><span><b class="g">${g.length}</b> con 6 o más</span><span><b class="m">${a.length}</b> entre 3 y 6</span><span><b class="r">${r.length}</b> con menos de 3</span></div></section>
-    <div class="dos">
-      <section class="bloque"><h2>Mayor facturación</h2><ul class="lista">${top.map((c) => li(c, money(c.f))).join("") || '<li>Sin datos</li>'}</ul></section>
-      <section class="bloque"><h2>MER más bajo</h2><ul class="lista">${bajos.map((c) => li(c, `<span class="${merCls(c.mer)}">${merTxt(c.mer)}</span>`)).join("") || '<li>Sin datos</li>'}</ul></section>
+  return `<div class="cab"><div><h1>Agencia</h1><p class="sub">${rangoTxt(rango())} · sin clientes de leads</p></div>${fuentes()}</div>
+    <div class="kpis">
+      ${kpi("Facturación de clientes", money(fac), cambio(fac, pf), "", "fac")}${kpi("Inversión gestionada", money(inv), cambio(inv, pi), "", "inv")}
+      ${kpi("MER global", merTxt(mer), pm ? cambio(mer, pm) : "", merCls(mer), "mer")}${kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`, "", "tie")}
     </div>
-    <section class="bloque"><h2>Tiendas conectadas en vivo</h2><p class="sub" style="padding:0 16px">${conectados.length} de ${tn.length} clientes con Tiendanube.</p>
-      <div class="prog"><i style="width:${tn.length ? (conectados.length / tn.length) * 100 : 0}%"></i></div>
-      ${faltan.length ? `<div class="tablebox" style="max-height:320px;overflow-y:auto"><table><tbody>${faltan.sort((x, y) => x.name.localeCompare(y.name, "es")).map((c) => `<tr><td class="nom"><b>${esc(c.name)}</b></td><td>${link ? `<a class="btn" href="${link}" target="_blank" rel="noopener">Conectar</a>` : '<span class="na">Falta crear la app</span>'}</td></tr>`).join("")}</tbody></table></div>
-      <div class="pie"><span>Antes de tocar Conectar, entrá al administrador de esa tienda en este navegador: se conecta la que tengas abierta.</span></div>` : ""}</section>`;
+    <h2 class="titulo-sec">Alertas</h2>${alertas()}
+    ${bloqueMer(conInv)}
+    <div class="dos">
+      <section class="bloque"><h2>Mayor facturación</h2><ul class="lista">${top.map((c, i) => `<li data-id="${esc(c.id)}" tabindex="0"><span><i class="pos">${i + 1}</i>${esc(c.name)}</span><b>${money(c.f)}<small>${pct(c.f, totTop)}%</small></b></li>`).join("") || "<li>Sin datos</li>"}</ul></section>
+      ${bloqueTiendas(link)}
+    </div>
+    ${bloqueMovimientos()}
+    <h2 class="titulo-sec">Evolución</h2>${bloqueGraf()}`;
 }
 
 /* ---------- Pintar sin perder lo que el usuario está mirando ---------- */
@@ -831,7 +934,7 @@ function pintar() {
 }
 
 /* ---------- Eventos ---------- */
-document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { E.v = b.dataset.v; $("aviso").hidden = true; escribirUrl(); cargar(); }));
+document.querySelectorAll("[data-v]").forEach((b) => b.addEventListener("click", () => { E.v = b.dataset.v; $("aviso").hidden = true; escribirUrl(); cargar(); }));
 document.querySelectorAll("#fechas button").forEach((b) => b.addEventListener("click", () => { E.p = b.dataset.p; E.limite = 100; escribirUrl(); pintarControles(); cargar(); programar(); }));
 function cambiarRango() {
   let a = $("dDesde").value, b = $("dHasta").value;
@@ -872,6 +975,11 @@ vista.addEventListener("click", (e) => {
     return pintar();
   }
   if (e.target.id === "linkCliente") return linkCliente(false);
+  const am = e.target.closest("[data-agmer]");
+  if (am) { E.agMer = E.agMer === am.dataset.agmer ? null : am.dataset.agmer; return pintar(); }
+  const af = e.target.closest("[data-agform]");
+  if (af) { E.agForm = E.agForm === af.dataset.agform ? null : af.dataset.agform; E.agErr = null; return pintar(); }
+  if (e.target.id === "agBaja" || e.target.id === "agAlta" || e.target.id === "agReactivar") return guardarMovimiento(e.target.id);
   if (e.target.id === "copiarApp") {
     const b = e.target;
     navigator.clipboard.writeText(b.dataset.url).then(() => { b.textContent = "¡Copiado!"; setTimeout(() => { b.textContent = "Copiar link"; }, 2000); }, () => { b.textContent = "Copialo a mano"; });

@@ -34,6 +34,45 @@ a{color:var(--accent2)}
 .modo-cliente .tabs,.modo-cliente .pick{display:none}
 .cab-der{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px 12px}
 .ico{width:15px;height:15px;flex:none}
+.ir-agencia{border:1px solid var(--line);background:transparent;color:var(--muted);padding:5px 10px;border-radius:8px;cursor:pointer;font-size:12.5px;transition:all .15s}
+.ir-agencia:hover{color:var(--ink);border-color:#3d3450}
+.ir-agencia[aria-pressed="true"]{color:#fff;background:rgba(124,58,237,.32);border-color:transparent}
+.modo-cliente .ir-agencia{display:none}
+.alertas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:10px;margin:8px 0 12px;align-items:start}
+.alerta{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0;border-top:3px solid var(--line)}
+.alerta.mal{border-top-color:var(--bad)} .alerta.ojo{border-top-color:var(--mid)} .alerta.bien{border-top-color:var(--good)}
+.alerta h3{display:flex;align-items:center;gap:7px;margin:0;font-size:14px;font-weight:600}
+.alerta h3 span{flex:1;min-width:0}
+.alerta h3 b{font-family:var(--cond);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.alerta>p{margin:3px 0 0;color:var(--muted);font-size:12px;line-height:1.35}
+.alerta .lista{margin:8px -14px -12px;max-height:210px;overflow-y:auto;border-top:1px solid var(--line)}
+.alerta .lista li{padding:6px 14px;font-size:13px}
+.alerta .lista b{font-size:12.5px;white-space:nowrap}
+.alerta .alerta-ok{color:var(--good);margin-top:8px;font-size:13px}
+.alerta-ok{color:var(--good);font-size:13px}
+.sem-btn button{border:0;padding:0;cursor:pointer;transition:opacity .15s,filter .15s}
+.sem-btn button:hover{filter:brightness(1.15)}
+.sem-btn:has(button[aria-pressed="true"]) button[aria-pressed="false"]{opacity:.4}
+.mer-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:transparent;color:var(--ink2);padding:5px 10px;border-radius:999px;cursor:pointer;font-size:13px;transition:all .15s}
+.mer-chip i{width:9px;height:9px;border-radius:50%}
+.mer-chip[aria-pressed="true"]{background:var(--panel2);border-color:var(--accent2);color:#fff}
+.mer-chip:hover{background:var(--panel2)}
+.pos{display:inline-block;width:20px;color:var(--muted);font-style:normal;font-size:12px}
+.lista small{color:var(--muted);font-weight:400;margin-left:8px;font-size:12px}
+.faltan{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;padding:0 16px 8px}
+.lista-alta{max-height:280px;overflow-y:auto}
+.ag-cab{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;padding:13px 16px}
+.ag-btns{display:flex;gap:6px}
+.btn[aria-pressed="true"]{background:rgba(124,58,237,.32);border-color:transparent;color:#fff}
+.ag-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;padding:12px 16px 14px;background:var(--panel2);border-block:1px solid var(--line)}
+.ag-form label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);min-width:0}
+.ag-form input,.ag-form select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit;font-size:14px;width:100%}
+.ag-form .ancho{grid-column:1/-1;margin:0}
+.ag-form .volver{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--line)}
+.ag-form .volver select{width:auto;max-width:100%}
+.btn.peligro{border-color:var(--bad);color:var(--bad)}
+.graf-des.graf-chips{border-top:0;padding-top:0;margin:0 0 10px}
+.semaforo.sem-btn{height:16px}
 .fl-bien{color:var(--good)} .fl-mal{color:var(--bad)}
 .tiles{display:grid;grid-template-columns:repeat(var(--cols,4),minmax(0,1fr));gap:10px;margin-bottom:10px}
 .tiles .kpi{padding:12px 14px}
@@ -236,7 +275,7 @@ td.izq,th.izq{text-align:left}
   .kpis,.kpis.chico{grid-template-columns:1fr 1fr}
   .tiles{grid-template-columns:1fr 1fr;gap:8px}
   .tile{padding:10px 11px}
-  .tile b,.tiles .kpi b{font-size:19px}
+  .tile b,.tiles .kpi b,.kpis .kpi b{font-size:19px;white-space:nowrap}
   .tile small{font-size:11px}
   .tile-t{font-size:12px;gap:5px}
   .graf-ley-m b{font-size:17px}
@@ -271,7 +310,6 @@ td.izq,th.izq{text-align:left}
     <div class="brand">ELEVATION<i>.</i></div>
     <div class="tabs" role="group" aria-label="Vista">
       <button data-v="general">General</button>
-      <button data-v="agencia">Agencia</button>
     </div>
     <div class="pick" id="pick">
       <button type="button" id="pickBtn" aria-haspopup="listbox" aria-expanded="false"><span id="pickTxt">Elegir cliente</span></button>
@@ -293,6 +331,7 @@ td.izq,th.izq{text-align:left}
       <input type="date" id="dDesde" aria-label="Desde"><span>a</span><input type="date" id="dHasta" aria-label="Hasta">
     </div>
     <div class="vivo" id="vivo" role="status"><span class="dot" aria-hidden="true"></span><span id="vivoTxt">Conectando…</span></div>
+    <button type="button" class="ir-agencia" data-v="agencia">Agencia</button>
   </div></div>
   <main class="wrap">
     <div class="aviso" id="aviso" role="status" hidden></div>
