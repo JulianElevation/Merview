@@ -14,7 +14,7 @@
   --bg:#0D0A16; --panel:#15111F; --panel2:#1C1729; --ink:#FFFFFF; --ink2:#D5D0E0; --muted:#A198B5; --line:#2B2439;
   --accent:#7C3AED; --accent2:#A78BFA; --good:#4ADE80; --mid:#FBBF24; --bad:#F87171;
   --s1:#9085e9; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#3987e5;
-  --serie:#9085e9; --serie2:#199e70; --cond:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+  --m1:#9085e9; --m2:#d95926; --serie:#9085e9; --serie2:#199e70; --cond:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
 }
 *{box-sizing:border-box}
 html{color-scheme:dark}
@@ -33,19 +33,61 @@ a{color:var(--accent2)}
 .tabs button[aria-pressed="true"]{background:var(--accent);color:#fff;font-weight:500}
 .modo-cliente .tabs,.modo-cliente .pick{display:none}
 .cab-der{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px 12px}
-.graf{padding:14px 16px 6px}
-.graf-met{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-.graf-met button{border:1px solid var(--line);background:transparent;color:var(--muted);padding:6px 11px;border-radius:999px;cursor:pointer;font-size:13px;white-space:nowrap}
-.graf-met button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
-.graf-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:8px;font-size:13px;color:var(--muted)}
-.graf-per{display:flex;align-items:center;gap:6px}
-.graf-per select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 7px;font:inherit;font-size:13px;cursor:pointer}
-.graf-seg{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:2px}
-.graf-seg button{border:0;background:transparent;color:var(--muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:13px}
-.graf-seg button[aria-pressed="true"]{background:rgba(124,58,237,.28);color:#fff}
-.graf-tot{margin-left:auto;display:flex;align-items:baseline;gap:8px}
-.graf-tot b{font-size:18px;color:var(--ink)}
-.graf .chart{padding-left:0;padding-right:0}
+.ico{width:15px;height:15px;flex:none}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:10px}
+.tile{--c:transparent;position:relative;display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px 12px;min-width:0;cursor:pointer;overflow:hidden;transition:border-color .18s,background .18s,transform .18s}
+.tile::before{content:"";position:absolute;inset:0 0 auto;height:3px;background:var(--c);transition:background .18s}
+.tile:hover{border-color:#3d3450;background:var(--panel2)}
+.tile:active{transform:scale(.985)}
+.tile[data-n="1"]{--c:var(--m1)} .tile[data-n="2"]{--c:var(--m2)}
+.tile[aria-pressed="true"]{background:var(--panel2);border-color:var(--c)}
+.tile-t{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px}
+.tile[aria-pressed="true"] .tile-t{color:var(--ink)}
+.tile-t>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile-pto{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--line);flex:none;transition:all .18s}
+.tile[aria-pressed="true"] .tile-pto{background:var(--c);border-color:var(--c);box-shadow:inset 0 0 0 3px var(--panel2)}
+.tile b{display:block;font-family:var(--cond);font-weight:600;font-size:26px;line-height:1.25;margin-top:5px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.tile small{display:block;color:var(--muted);font-size:12px;line-height:1.3}
+.tiles .kpi b{font-size:26px;margin-top:5px}
+.kpi-t{display:flex!important;align-items:center;gap:7px}
+.graf{padding:14px 16px 10px}
+.graf-cab{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin-bottom:10px}
+.graf-ley{display:flex;flex-wrap:wrap;gap:6px 22px}
+.graf-ley-m{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2)}
+.graf-ley-m b{font-family:var(--cond);font-weight:600;font-size:20px;color:var(--ink);font-variant-numeric:tabular-nums}
+.sw{width:12px;height:12px;border-radius:3px;background:var(--c);flex:none}
+.sw.lin{height:3px;width:16px;border-radius:2px}
+.graf-rango{color:var(--muted);font-size:12px;white-space:nowrap}
+.graf-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-bottom:8px;font-size:13px;color:var(--muted)}
+.graf-per,.graf-seg{display:flex;gap:2px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:2px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.graf-per::-webkit-scrollbar{display:none}
+.graf-per button,.graf-seg button{border:0;background:transparent;color:var(--muted);padding:4px 10px;border-radius:7px;cursor:pointer;font-size:13px;white-space:nowrap;transition:background .15s,color .15s}
+.graf-per button:hover,.graf-seg button:hover{color:var(--ink)}
+.graf-per button[aria-pressed="true"],.graf-seg button[aria-pressed="true"]{background:rgba(124,58,237,.32);color:#fff}
+.graf-tabbtn{display:inline-flex;align-items:center;gap:6px;margin-left:auto;border:1px solid var(--line);background:transparent;color:var(--muted);padding:4px 10px;border-radius:9px;cursor:pointer;font-size:13px;transition:all .15s}
+.graf-tabbtn:hover{color:var(--ink)}
+.graf-tabbtn[aria-pressed="true"]{background:rgba(124,58,237,.32);color:#fff;border-color:transparent}
+.graf-nota{margin:0 0 6px;color:var(--muted);font-size:12px}
+.graf-des{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-top:10px;border-top:1px solid var(--line);margin-top:4px;font-size:12px;color:var(--muted)}
+.graf-des>span{margin-right:4px}
+.graf-des button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:transparent;color:var(--ink2);padding:5px 10px;border-radius:999px;cursor:pointer;font-size:12.5px;transition:all .15s}
+.graf-des button:hover{border-color:#3d3450;background:var(--panel2)}
+.graf-des button[aria-pressed="true"]{background:rgba(124,58,237,.32);border-color:transparent;color:#fff}
+.graf-tabla{max-height:340px;overflow-y:auto;margin-bottom:6px;border:1px solid var(--line);border-radius:8px}
+.graf .chart{padding-left:0;padding-right:0;padding-bottom:6px}
+.graf .leyenda{padding-left:0}
+.chart text.val{fill:var(--ink);font-size:10.5px;font-weight:500;paint-order:stroke;stroke:var(--panel);stroke-width:3px;stroke-linejoin:round;font-variant-numeric:tabular-nums;pointer-events:none}
+.chart .hit{cursor:crosshair}
+.chart .hit:hover{fill:rgba(255,255,255,.05)}
+.chart .parcial{opacity:.55}
+@media (prefers-reduced-motion:no-preference){
+  .anim .barra{transform-box:fill-box;transform-origin:bottom;animation:crece .42s cubic-bezier(.2,.8,.2,1) both}
+  .anim .linea{stroke-dasharray:1;animation:traza .6s ease-out both}
+  .anim .val,.anim .punto-g{animation:aparece .35s ease-out .22s both}
+}
+@keyframes crece{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes traza{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes aparece{from{opacity:0}to{opacity:1}}
 .pick{position:relative}
 .pick>button{display:flex;align-items:center;gap:8px;max-width:260px;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:7px 12px;cursor:pointer;font-size:14px}
 .pick>button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -88,7 +130,7 @@ h2{font-family:var(--cond);font-weight:600;font-size:19px;margin:0}
 .kpi>span{display:block;color:var(--muted);font-size:13px}
 .kpi b{display:block;font-family:var(--cond);font-weight:600;font-size:32px;line-height:1.2;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .kpi small{color:var(--muted);font-size:12px}
-.kpis.chico{grid-template-columns:repeat(5,1fr)}
+.kpis.chico{grid-template-columns:repeat(3,1fr)}
 .kpis.chico .kpi{padding:10px 14px}
 .kpis.chico b{font-size:21px}
 .g{color:var(--good)} .m{color:var(--mid)} .r{color:var(--bad)} .na{color:var(--muted);font-weight:400}
@@ -183,6 +225,12 @@ td.izq,th.izq{text-align:left}
   .wrap{padding:16px 16px 44px}
   h1{font-size:23px}
   .kpis,.kpis.chico{grid-template-columns:1fr 1fr}
+  .tiles{grid-template-columns:1fr 1fr;gap:8px}
+  .tile{padding:10px 11px}
+  .tile b,.tiles .kpi b{font-size:19px}
+  .tile small{font-size:11px}
+  .tile-t{font-size:12px;gap:5px}
+  .graf-ley-m b{font-size:17px}
   .kpi b{font-size:24px}
   .kpis.chico b{font-size:18px}
   .kpi{padding:11px 12px}

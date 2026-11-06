@@ -67,7 +67,7 @@ function ultimosMeses() {
 }
 
 /* ---------- Estado ---------- */
-const E = { v: "general", c: null, p: "mes", desde: null, hasta: null, q: "", soloActivos: true, sortK: "spend", sortDir: -1, limite: 100, graf: { m: "fac", p: "arriba", g: null, desde: null, hasta: null } };
+const E = { v: "general", c: null, p: "mes", desde: null, hasta: null, q: "", soloActivos: true, sortK: "spend", sortDir: -1, limite: 100, graf: { ms: ["fac"], p: "arriba", g: null, desde: null, hasta: null, tabla: false } };
 let clave = null, GEN = null, CLI = null, ultimaOk = null, turno = 0, timer = null, ultimoNumero = null, sondeo = false, primeraVez = true;
 
 function leerUrl() {
@@ -224,11 +224,11 @@ $("aviso").addEventListener("click", (e) => { if (e.target.id === "renovarLink")
 
 /* ---------- Gráficos ---------- */
 const movil = () => window.matchMedia("(max-width:640px)").matches;
-const CHART = { W: 900, H: 210, izq: 58, der: 8, arr: 12, aba: 26 };
-function medirGraficos() { CHART.W = Math.max(280, ($("vista").clientWidth || 900) - 34); CHART.H = movil() ? 170 : 210; CHART.izq = movil() ? 48 : 58; }
+const CHART = { W: 900, H: 270, izq: 58, der: 8, arr: 24, aba: 26 };
+function medirGraficos() { CHART.W = Math.max(280, ($("vista").clientWidth || 900) - 34); CHART.H = movil() ? 230 : 270; CHART.izq = movil() ? 48 : 58; }
 function escala(max) {
   const pot = Math.pow(10, Math.floor(Math.log10(max || 1)));
-  const paso = [1, 2, 2.5, 5, 10].map((m) => m * pot).find((p) => (max / p) <= 4) || pot * 10;
+  const paso = [0.25, 0.5, 1, 2, 2.5, 5, 10].map((m) => m * pot).find((p) => (max / p) <= 4) || pot * 10;
   return { paso, tope: Math.ceil(max / paso) * paso || 1 };
 }
 function ejes(puntos, tope, paso, fmtY) {
@@ -243,55 +243,45 @@ function ejes(puntos, tope, paso, fmtY) {
   puntos.forEach((p, i) => { if (i % cada === 0) s += `<text x="${izq + slot * i + slot / 2}" y="${H - 8}" text-anchor="middle">${p.corto ?? p.label ?? ddmm(p.day)}</text>`; });
   return s;
 }
-function grafico(puntos, tipo, color, fmtY, fmtTip) {
-  const vals = puntos.map((p) => p.v).filter((v) => v != null && isFinite(v));
-  if (!vals.length || vals.every((v) => v === 0)) return '<div class="sinchart">No hay datos en este período.</div>';
-  const { W, H, izq, der, arr, aba } = CHART, alto = H - arr - aba;
-  const { paso, tope } = escala(Math.max(...vals));
-  const slot = (W - izq - der) / puntos.length, y = (v) => arr + alto - (v / tope) * alto, x = (i) => izq + slot * i + slot / 2;
-  let marcas = "";
-  if (tipo === "barras") {
-    const bw = Math.max(2, Math.min(24, slot * 0.62));
-    puntos.forEach((p, i) => {
-      if (!(p.v > 0)) return;
-      const yy = y(p.v), r = Math.min(4, bw / 2, arr + alto - yy), xx = x(i) - bw / 2, b = arr + alto;
-      marcas += `<path fill="${color}" d="M${xx} ${b}V${yy + r}Q${xx} ${yy} ${xx + r} ${yy}H${xx + bw - r}Q${xx + bw} ${yy} ${xx + bw} ${yy + r}V${b}Z"/>`;
-    });
-  } else {
-    let tramo = "", tramos = [];
-    puntos.forEach((p, i) => {
-      if (p.v == null || !isFinite(p.v)) { if (tramo) tramos.push(tramo); tramo = ""; return; }
-      tramo += `${tramo ? "L" : "M"}${x(i)} ${y(p.v)}`;
-    });
-    if (tramo) tramos.push(tramo);
-    marcas = tramos.map((d) => `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`).join("");
-    if (puntos.length <= 45) puntos.forEach((p, i) => { if (p.v != null && isFinite(p.v)) marcas += `<circle cx="${x(i)}" cy="${y(p.v)}" r="4" fill="${color}" stroke="var(--panel)" stroke-width="2"/>`; });
-  }
-  const hits = puntos.map((p, i) => `<rect class="hit" data-t="${esc(fmtTip(p))}" x="${izq + slot * i}" y="0" width="${slot}" height="${H}" fill="transparent"/>`).join("");
-  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" style="height:auto" role="img">${ejes(puntos, tope, paso, fmtY)}${marcas}${hits}</svg><div class="tip" hidden></div></div>`;
+// Valor corto para escribir sobre el gráfico: sin signo de pesos, con un decimal cuando ayuda.
+function cortoVal(v) {
+  const a = Math.abs(v), d = (x) => x.toFixed(1).replace(".", ",").replace(",0", "");
+  if (a >= 1e9) return d(v / 1e9) + " B";
+  if (a >= 1e7) return Math.round(v / 1e6) + " M";
+  if (a >= 1e6) return d(v / 1e6) + " M";
+  if (a >= 1e4) return Math.round(v / 1e3) + " K";
+  if (a >= 1e3) return d(v / 1e3) + " K";
+  return String(Math.round(v));
 }
-// Barras apiladas de una misma escala, con leyenda: cada parte va separada por un espacio.
+const etiqueta = (x, y, txt, ancla = "middle") => `<text class="val" x="${x}" y="${y}" text-anchor="${ancla}">${esc(txt)}</text>`;
+const barra = (x, y, w, base, color, clase = "") => {
+  const r = Math.min(4, w / 2, base - y);
+  return `<path class="barra ${clase}" fill="${color}" d="M${x} ${base}V${y + r}Q${x} ${y} ${x + r} ${y}H${x + w - r}Q${x + w} ${y} ${x + w} ${y + r}V${base}Z"/>`;
+};
+// Barras apiladas de una misma escala: total arriba y cada parte adentro cuando entra.
 function apiladas(puntos, series, nombre) {
   const vals = puntos.map((p) => series.reduce((s, k) => s + num(p.partes[k]), 0));
   if (!vals.some((v) => v > 0)) return '<div class="sinchart">No hay datos todavía.</div>';
   const { W, H, izq, der, arr, aba } = CHART, alto = H - arr - aba;
   const { paso, tope } = escala(Math.max(...vals));
-  const slot = (W - izq - der) / puntos.length, bw = Math.max(4, Math.min(30, slot * 0.62)), b = arr + alto;
-  let marcas = "", hits = "";
+  const slot = (W - izq - der) / puntos.length, bw = Math.max(4, Math.min(38, slot * 0.66)), b = arr + alto;
+  const cada = Math.max(1, Math.ceil(30 / slot));
+  let marcas = "", hits = "", textos = "";
   puntos.forEach((p, i) => {
     let base = b;
     const xx = izq + slot * i + (slot - bw) / 2, visibles = series.filter((k) => num(p.partes[k]) > 0);
     visibles.forEach((k, j) => {
-      const h = (num(p.partes[k]) / tope) * alto, y = base - h, col = COLORES[series.indexOf(k)], ult = j === visibles.length - 1;
-      const alt = Math.max(1, ult ? h : h - 2), r = ult ? Math.min(4, bw / 2, alt) : 0;
-      marcas += `<path fill="${col}" d="M${xx} ${base}V${base - alt + r}Q${xx} ${base - alt} ${xx + r} ${base - alt}H${xx + bw - r}Q${xx + bw} ${base - alt} ${xx + bw} ${base - alt + r}V${base}Z"/>`;
-      base = y;
+      const h = (num(p.partes[k]) / tope) * alto, ult = j === visibles.length - 1, alt = Math.max(1, ult ? h : h - 2);
+      marcas += barra(xx, base - alt, bw, base, COLORES[series.indexOf(k)]);
+      if (bw >= 24 && alt >= 16) textos += etiqueta(xx + bw / 2, base - alt / 2 + 4, cortoVal(num(p.partes[k])));
+      base -= h;
     });
+    if (vals[i] > 0 && (puntos.length - 1 - i) % cada === 0) textos += etiqueta(xx + bw / 2, base - 7, cortoVal(vals[i]));
     const tip = `${p.label}: ` + (visibles.map((k) => `${nombre(k)} ${nf0.format(num(p.partes[k]))}`).join(" · ") || "sin ventas");
     hits += `<rect class="hit" data-t="${esc(tip)}" x="${izq + slot * i}" y="0" width="${slot}" height="${H}" fill="transparent"/>`;
   });
   const ley = series.map((k, i) => `<span><i style="background:${COLORES[i]}"></i>${esc(nombre(k))}</span>`).join("");
-  return `<div class="leyenda">${ley}</div><div class="chart"><svg viewBox="0 0 ${W} ${H}" style="height:auto" role="img">${ejes(puntos, tope, paso, (v) => nf0.format(v))}${marcas}${hits}</svg><div class="tip" hidden></div></div>`;
+  return `<div class="leyenda">${ley}</div><div class="chart"><svg class="${GRAF.anim ? "anim" : ""}" viewBox="0 0 ${W} ${H}" style="height:auto" role="img">${ejes(puntos, tope, paso, (v) => nf0.format(v))}${marcas}${textos}${hits}</svg><div class="tip" hidden></div></div>`;
 }
 // Agrupa las categorías menos usadas para no superar los colores disponibles.
 function porMes(filas, etiqueta) {
@@ -375,8 +365,8 @@ function completar(dias, a, b) {
 function diasCompletos(dias) { const [a, b] = rango(); return completar(dias, a, b); }
 
 /* ---------- Gráfico único: qué mirar, qué fechas y cómo agrupar ---------- */
-const GRAF = { datos: null, clave: null, trae: false, cuando: 0, error: null, turno: 0 };
-const PERIODOS = [["arriba", "Las fechas de arriba"], ["7d", "Últimos 7 días"], ["30d", "Últimos 30 días"], ["90d", "Últimos 90 días"], ["anio", "Este año"], ["12m", "Últimos 12 meses"], ["rango", "Elegir fechas"]];
+const GRAF = { datos: null, clave: null, trae: false, cuando: 0, error: null, turno: 0, anim: true };
+const PERIODOS = [["arriba", "Igual que arriba"], ["7d", "7 días"], ["30d", "30 días"], ["90d", "90 días"], ["anio", "Este año"], ["12m", "12 meses"], ["rango", "Fechas"]];
 const AGRUPAR = [["d", "Día"], ["s", "Semana"], ["m", "Mes"]];
 function grafRango() {
   const h = hoyBA(), g = E.graf;
@@ -397,8 +387,11 @@ function grafDias() {
 }
 function grafAgrupacion() {
   if (E.graf.g) return E.graf.g;
-  const [a, b] = grafRango(), n = (new Date(b) - new Date(a)) / 864e5;
-  return n <= 62 ? "d" : n <= 183 ? "s" : "m";
+  // Elige la más detallada en la que los valores entran escritos.
+  const lista = grafMetricas(), sel = E.graf.ms.map((id) => lista.find((m) => m.id === id)).filter(Boolean);
+  const ladoALado = sel.length === 2 && sel[0].tipo === "barras" && sel[1].tipo === "barras" && sel[0].gr === sel[1].gr;
+  const [a, b] = grafRango(), n = (new Date(b) - new Date(a)) / 864e5 + 1, entran = Math.max(5, Math.floor((($("vista")?.clientWidth || 900) - 90) / (ladoALado ? 64 : 32)));
+  return n <= entran ? "d" : n / 7 <= entran ? "s" : "m";
 }
 function lunes(d) {
   const dia = new Date(d + "T12:00:00Z").getUTCDay();
@@ -408,50 +401,184 @@ function grafPuntos(dias) {
   const [a, b] = grafRango(), g = grafAgrupacion(), grupos = new Map();
   completar(dias, a, b).forEach((d) => {
     const k = g === "s" ? lunes(d.day) : g === "m" ? d.day.slice(0, 7) : d.day;
-    if (!grupos.has(k)) grupos.set(k, { label: g === "m" ? mesTxt(k) : ddmm(k), tip: g === "s" ? `Semana del ${ddmm(k)}` : g === "m" ? mesTxt(k) : ddmm(k), revenue: 0, orders: 0, spend: 0, messages: 0, nuevos: 0, recurrentes: 0 });
+    if (!grupos.has(k)) grupos.set(k, { label: g === "m" ? mesTxt(k) : ddmm(k), tip: g === "s" ? `Semana del ${ddmm(k)}` : g === "m" ? mesTxt(k) : ddmm(k), parcial: false, revenue: 0, orders: 0, spend: 0, messages: 0, nuevos: 0, recurrentes: 0 });
     const x = grupos.get(k);
+    if (d.day === hoyBA()) x.parcial = true;
     ["revenue", "orders", "spend", "messages", "nuevos", "recurrentes"].forEach((c) => { x[c] += num(d[c]); });
   });
   return [...grupos.values()];
 }
 const cantidad = (v) => nf0.format(v);
+const ICONOS = {
+  fac: '<line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  inv: '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+  mer: '<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>',
+  ven: '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+  tic: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/>',
+  cac: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>',
+  cli: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  pag: '<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>',
+  cuo: '<rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  msg: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  cpm: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6M9.5 10h5"/>',
+  uni: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  pen: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  tie: '<path d="M3 9 4.5 4h15L21 9"/><path d="M4 9v11h16V9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/>',
+  tab: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>',
+};
+const icono = (id) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONOS[id] || ""}</svg>`;
 function grafMetricas() {
-  const barra = (id, t, campo, color, fmtY, fmtV) => ({ id, t, tipo: "barras", color, fmtY, fmtV, v: (x) => x[campo], tot: (ps) => ps.reduce((s, x) => s + x[campo], 0) });
-  const razon = (id, t, arr, aba, color, fmtY, fmtV) => ({ id, t, tipo: "linea", color, fmtY, fmtV, v: (x) => (x[aba] > 0 ? x[arr] / x[aba] : null), tot: (ps) => { const m = ps.reduce((s, x) => s + x[aba], 0); return m > 0 ? ps.reduce((s, x) => s + x[arr], 0) / m : null; } });
-  const fac = barra("fac", "Facturación", "revenue", "var(--serie)", corto, money);
-  const inv = barra("inv", "Inversión", "spend", "var(--serie)", corto, money);
-  const mer = razon("mer", "MER", "revenue", "spend", "var(--serie2)", merTxt, merTxt);
+  const suma = (id, t, campo, gr) => ({ id, t, tipo: "barras", gr, fmtY: gr === "vol" ? corto : cantidad, fmtV: gr === "vol" ? money : cantidad, fmtL: gr === "vol" ? cortoVal : cantidad, v: (x) => x[campo], tot: (ps) => ps.reduce((s, x) => s + x[campo], 0) });
+  const razon = (id, t, arr, aba, gr, fmtY, fmtV, fmtL) => ({ id, t, tipo: "linea", gr, fmtY, fmtV, fmtL, v: (x) => (x[aba] > 0 ? x[arr] / x[aba] : null), tot: (ps) => { const m = ps.reduce((s, x) => s + x[aba], 0); return m > 0 ? ps.reduce((s, x) => s + x[arr], 0) / m : null; } });
+  const fac = suma("fac", "Facturación", "revenue", "vol");
+  const inv = suma("inv", "Inversión", "spend", "vol");
+  const mer = razon("mer", "MER", "revenue", "spend", "mer", merTxt, merTxt, merTxt);
   if (E.v === "agencia") return [fac, inv, mer];
-  if (CLI?.cliente?.kind === "leads") return [inv, barra("msg", "Mensajes", "messages", "var(--serie2)", cantidad, cantidad), razon("cpm", "Costo por mensaje", "spend", "messages", "var(--s4)", corto, money)];
+  if (CLI?.cliente?.kind === "leads") return [inv, suma("msg", "Mensajes", "messages", "cnt"), razon("cpm", "Costo por mensaje", "spend", "messages", "uni", corto, money, cortoVal)];
   if (!(CLI?.tiendas || []).some((t) => t.conectada)) return [fac, inv, mer];
-  return [fac, barra("ven", "Ventas", "orders", "var(--serie2)", cantidad, cantidad), razon("tic", "Ticket", "revenue", "orders", "var(--s4)", corto, money), inv, mer,
-    razon("cac", "CAC", "spend", "nuevos", "var(--s4)", corto, money),
-    { id: "cli", t: "Nuevos y recurrentes", tipo: "apil" }, { id: "pag", t: "Método de pago", tipo: "mes" }, { id: "cuo", t: "Cuotas", tipo: "mes" }];
+  return [fac, inv, mer, suma("ven", "Ventas", "orders", "cnt"), razon("tic", "Ticket promedio", "revenue", "orders", "uni", corto, money, cortoVal),
+    razon("cac", "CAC", "spend", "nuevos", "uni", corto, money, cortoVal),
+    { id: "cli", t: "Nuevos y recurrentes", tipo: "desglose" }, { id: "pag", t: "Método de pago", tipo: "desglose", fijo: true }, { id: "cuo", t: "Cuotas", tipo: "desglose", fijo: true }];
 }
-function grafDibujo(met) {
-  if (met.id === "pag") return porMes(CLI.meses_pagos || [], pagoTxt);
-  if (met.id === "cuo") return porMes(CLI.meses_cuotas || [], (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`));
+function grafSel() {
+  const lista = grafMetricas(), sel = E.graf.ms.map((id) => lista.find((m) => m.id === id)).filter(Boolean);
+  return sel.length ? sel : [lista[0]];
+}
+// Como Search Console: cada tarjeta se prende o se apaga; entran hasta dos métricas.
+function elegirMetrica(id) {
+  const lista = grafMetricas(), m = lista.find((x) => x.id === id);
+  if (!m) return;
+  const actual = grafSel().map((x) => x.id);
+  if (m.tipo === "desglose") E.graf.ms = [id];
+  else if (actual.includes(id)) E.graf.ms = actual.length > 1 ? actual.filter((x) => x !== id) : actual;
+  else {
+    const num2 = actual.filter((x) => lista.find((y) => y.id === x).tipo !== "desglose");
+    E.graf.ms = num2.length ? [num2[0], id] : [id];
+  }
+  GRAF.anim = true;
+  pintarGraf();
+}
+function tiles(valores, extra = "") {
+  const sel = grafSel().map((m) => m.id);
+  const lista = grafMetricas().filter((m) => m.tipo !== "desglose").map((m) => {
+    const [v, sub, cls] = valores[m.id] || ["—", ""], n = sel.indexOf(m.id) + 1;
+    return `<button type="button" class="tile" data-gm="${m.id}" data-n="${n}" aria-pressed="${n > 0}">
+      <span class="tile-t">${icono(m.id)}<span>${esc(m.t)}</span><i class="tile-pto" aria-hidden="true"></i></span>
+      <b class="${cls || ""}">${esc(v)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</button>`;
+  }).join("");
+  return `<div class="tiles">${lista}${extra}</div>`;
+}
+function sincronizarTiles() {
+  const sel = grafSel().map((m) => m.id);
+  document.querySelectorAll("[data-gm]").forEach((b) => {
+    const n = sel.indexOf(b.dataset.gm) + 1;
+    b.dataset.n = n; b.setAttribute("aria-pressed", n > 0 ? "true" : "false");
+  });
+}
+// Las dos métricas comparten escala solo si se miden igual; si no, cada una usa la suya y el valor va escrito.
+function combo(ps, mets) {
+  const { W, H, der } = CHART, [m1, m2] = mets, mismaEsc = !m2 || m1.gr === m2.gr;
+  const izq = mismaEsc ? CHART.izq : 8, arr = CHART.arr, aba = CHART.aba, alto = H - arr - aba, base = arr + alto;
+  const vals = mets.map((m) => ps.map((x) => m.v(x)));
+  const techo = (arrs) => Math.max(0, ...arrs.flat().filter((v) => v != null && isFinite(v)));
+  if (vals.every((a) => !a.some((v) => v))) return '<div class="sinchart">No hay datos en este período.</div>';
+  const e1 = escala(techo(mismaEsc ? vals : [vals[0]]) || 1), e2 = m2 ? (mismaEsc ? e1 : escala(techo([vals[1]]) || 1)) : null;
+  const slot = (W - izq - der) / ps.length, xc = (i) => izq + slot * i + slot / 2;
+  const y = (v, e) => arr + alto - (v / e.tope) * alto;
+  const puntos = ps.map((x) => ({ label: x.label }));
+  // Dos barras comparables van lado a lado; si no, la segunda pasa a línea.
+  const dosBarras = m2 && m1.tipo === "barras" && m2.tipo === "barras" && mismaEsc;
+  const tipos = mets.map((m, i) => (m.tipo === "barras" && !(i === 1 && !dosBarras) ? "barras" : "linea"));
+  if (m2 && tipos[0] === "linea" && tipos[1] === "linea" && m2.tipo === "barras") tipos[1] = "barras";
+  const colores = ["var(--m1)", "var(--m2)"];
+  const anchoEtq = Math.max(...mets.map((m, i) => Math.max(...vals[i].filter((v) => v != null).map((v) => m.fmtL(v).length), 1))) * 5.8 + 4;
+  const espacio = dosBarras ? slot / 2 : slot, paso = Math.max(1, Math.ceil(anchoEtq / espacio));
+  const muestra = (i) => (ps.length - 1 - i) % paso === 0;
+  let fondo = mismaEsc ? ejes(puntos, e1.tope, e1.paso, m1.fmtY) : (() => {
+    const c0 = { ...CHART, izq }; let t = "";
+    for (let k = 1; k <= 3; k++) t += `<line x1="${izq}" x2="${W - der}" y1="${arr + (alto / 3) * (k - 1)}" y2="${arr + (alto / 3) * (k - 1)}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 4"/>`;
+    t += `<line x1="${izq}" x2="${W - der}" y1="${base}" y2="${base}" stroke="var(--line)" stroke-width="1"/>`;
+    const cada = Math.max(1, Math.ceil(ps.length / Math.max(3, Math.floor((W - izq) / 62))));
+    ps.forEach((x, i) => { if (i % cada === 0) t += `<text x="${xc(i)}" y="${H - 8}" text-anchor="middle">${esc(x.label)}</text>`; });
+    return t;
+  })();
+  let marcas = "", textos = "";
+  const nBarras = tipos.filter((t) => t === "barras").length;
+  const bw = Math.max(2, Math.min(nBarras > 1 ? 22 : 40, (slot * 0.66) / Math.max(1, nBarras)));
+  let bi = 0;
+  mets.forEach((m, k) => {
+    const e = k === 0 ? e1 : e2, color = colores[k];
+    if (tipos[k] === "barras") {
+      const off = nBarras > 1 ? (bi === 0 ? -bw - 1 : 1) : -bw / 2;
+      bi++;
+      vals[k].forEach((v, i) => {
+        if (!(v > 0)) return;
+        marcas += barra(xc(i) + off, y(v, e), bw, base, color, ps[i].parcial ? "parcial" : "");
+        if (!muestra(i)) return;
+        if (m2 && nBarras === 1) textos += etiqueta(xc(i), base - 7, m.fmtL(v));
+        else textos += etiqueta(xc(i) + off + bw / 2, y(v, e) - 7, m.fmtL(v));
+      });
+    } else {
+      let tramo = "", tramos = [];
+      vals[k].forEach((v, i) => {
+        if (v == null || !isFinite(v)) { if (tramo) tramos.push(tramo); tramo = ""; return; }
+        tramo += `${tramo ? "L" : "M"}${xc(i)} ${y(v, e)}`;
+      });
+      if (tramo) tramos.push(tramo);
+      marcas += tramos.map((d) => `<path class="linea" pathLength="1" d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`).join("");
+      vals[k].forEach((v, i) => {
+        if (v == null || !isFinite(v)) return;
+        if (ps.length <= 45) marcas += `<circle class="punto-g" cx="${xc(i)}" cy="${y(v, e)}" r="4" fill="${color}" stroke="var(--panel)" stroke-width="2"/>`;
+        if (!muestra(i)) return;
+        // Dos líneas: la de abajo escribe su valor debajo para no pisarse.
+        const otra = m2 && tipos[0] === "linea" && tipos[1] === "linea" ? vals[1 - k][i] : null;
+        const abajo = otra != null && y(otra, k === 0 ? e2 : e1) < y(v, e);
+        textos += etiqueta(xc(i), abajo ? Math.min(y(v, e) + 17, base - 3) : y(v, e) - 9, m.fmtL(v));
+      });
+    }
+  });
+  const hits = ps.map((x, i) => `<rect class="hit" data-t="${esc(`${x.tip}${x.parcial ? " (en curso)" : ""}: ` + mets.map((m, k) => `${m.t} ${vals[k][i] == null ? "—" : m.fmtV(vals[k][i])}`).join(" · "))}" x="${izq + slot * i}" y="0" width="${slot}" height="${H}" fill="transparent"/>`).join("");
+  const nota = paso > 1 ? `<p class="graf-nota">Se escribe 1 de cada ${paso} valores para que se lea bien. Agrupá por semana o abrí la tabla para ver todos.</p>` : "";
+  return `<div class="chart"><svg class="${GRAF.anim ? "anim" : ""}" viewBox="0 0 ${W} ${H}" style="height:auto" role="img" aria-label="${esc(mets.map((m) => m.t).join(" y "))}">${fondo}${marcas}${textos}${hits}</svg><div class="tip" hidden></div></div>${nota}`;
+}
+function grafTabla(ps, mets) {
+  const cols = grafMetricas().filter((m) => m.tipo !== "desglose");
+  const orden = [...mets, ...cols.filter((c) => !mets.some((m) => m.id === c.id))];
+  const filas = [...ps].reverse().map((x) => `<tr><td>${esc(x.tip)}${x.parcial ? ' <span class="sub">en curso</span>' : ""}</td>${orden.map((m) => { const v = m.v(x); return `<td>${v == null ? '<span class="na">—</span>' : esc(m.fmtV(v))}</td>`; }).join("")}</tr>`).join("");
+  return `<div class="tablebox graf-tabla"><table><thead><tr><th>Período</th>${orden.map((m) => `<th>${esc(m.t)}</th>`).join("")}</tr></thead><tbody>${filas}</tbody></table></div>`;
+}
+function grafDibujo(mets) {
+  const m = mets[0];
+  if (m.id === "pag") return porMes(CLI.meses_pagos || [], pagoTxt);
+  if (m.id === "cuo") return porMes(CLI.meses_cuotas || [], (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`));
   if (GRAF.error && E.graf.p !== "arriba") return '<div class="sinchart">No se pudieron traer estas fechas. Probá de nuevo o elegí un período más corto.</div>';
   const dias = grafDias();
-  if (!dias) return '<div class="sinchart">Cargando…</div>';
+  if (!dias) return `<div class="skel" style="height:${CHART.H}px;margin:0"></div>`;
   const ps = grafPuntos(dias);
-  if (met.tipo === "apil") return apiladas(ps.map((x) => ({ label: x.tip, corto: x.label, partes: { Nuevo: x.nuevos, Recurrente: x.recurrentes } })), ["Nuevo", "Recurrente"], (k) => (k === "Nuevo" ? "Nuevos" : "Recurrentes"));
-  return grafico(ps.map((x) => ({ label: x.label, tip: x.tip, v: met.v(x) })), met.tipo, met.color, met.fmtY, (p) => `${p.tip} · ${p.v == null ? "—" : met.fmtV(p.v)}`);
+  if (m.id === "cli") return apiladas(ps.map((x) => ({ label: x.tip, corto: x.label, partes: { Nuevo: x.nuevos, Recurrente: x.recurrentes } })), ["Nuevo", "Recurrente"], (k) => (k === "Nuevo" ? "Nuevos" : "Recurrentes"));
+  return (E.graf.tabla ? "" : combo(ps, mets)) + (E.graf.tabla ? grafTabla(ps, mets) : "");
 }
 function grafCuerpo() {
-  const lista = grafMetricas(), met = lista.find((m) => m.id === E.graf.m) || lista[0], fijo = met.tipo === "mes";
+  const lista = grafMetricas(), mets = grafSel(), m0 = mets[0], desglose = m0.tipo === "desglose", fijo = !!m0.fijo;
   const [a, b] = grafRango(), g = grafAgrupacion(), dias = fijo ? null : grafDias();
-  const total = dias && met.tot ? met.tot(grafPuntos(dias)) : null;
-  const pills = lista.map((m) => `<button type="button" data-gm="${m.id}" aria-pressed="${m.id === met.id}">${esc(m.t)}</button>`).join("");
-  const opciones = PERIODOS.map(([k, t]) => `<option value="${k}" ${k === E.graf.p ? "selected" : ""}>${esc(t)}</option>`).join("");
+  const ps = dias ? grafPuntos(dias) : null;
+  const rangoLeg = a.slice(0, 4) === b.slice(0, 4) ? rangoTxt([a, b]) : `${ddmm(a)}/${a.slice(2, 4)} al ${ddmm(b)}/${b.slice(2, 4)}`;
+  const leyenda = desglose ? `<div class="graf-ley"><span class="graf-ley-m">${icono(m0.id)}<b>${esc(m0.t)}</b></span></div>` : `<div class="graf-ley">${mets.map((m, k) => {
+    const t = ps ? m.tot(ps) : null;
+    return `<span class="graf-ley-m"><i class="sw ${m.tipo === "barras" && !(k === 1 && mets[0].gr !== m.gr) ? "" : "lin"}" style="--c:var(--m${k + 1})"></i>${esc(m.t)}<b>${t == null ? "—" : esc(m.fmtV(t))}</b></span>`;
+  }).join("")}</div>`;
+  const per = PERIODOS.map(([k, t]) => `<button type="button" data-gper="${k}" aria-pressed="${k === E.graf.p}">${esc(t)}</button>`).join("");
   const seg = AGRUPAR.map(([k, t]) => `<button type="button" data-gg="${k}" aria-pressed="${k === g}">${t}</button>`).join("");
-  const controles = fijo ? '<span class="sub">Por mes, últimos 12 meses</span>' : `<label class="graf-per">Período
-      <select id="grafP">${opciones}</select></label>
+  const tablaBtn = desglose ? "" : `<button type="button" class="graf-tabbtn" data-gtabla aria-pressed="${!!E.graf.tabla}">${icono("tab")}Tabla</button>`;
+  const controles = fijo ? '<span class="sub">Por mes, últimos 12 meses</span>' : `<div class="graf-per" role="group" aria-label="Período">${per}</div>
     ${E.graf.p === "rango" ? `<span class="rango"><input type="date" id="grafD" value="${a}" aria-label="Desde"><span>a</span><input type="date" id="grafH" value="${b}" aria-label="Hasta"></span>` : ""}
-    <div class="graf-seg" role="group" aria-label="Agrupar por">${seg}</div>`;
-  return `<div class="graf-met" role="group" aria-label="Qué mirar">${pills}</div>
-    <div class="graf-ctl">${controles}<span class="graf-tot">${fijo || total == null ? "" : `<small>${esc(a.slice(0, 4) === b.slice(0, 4) ? rangoTxt([a, b]) : `${ddmm(a)}/${a.slice(2, 4)} al ${ddmm(b)}/${b.slice(2, 4)}`)}</small><b>${esc(met.fmtV(total))}</b>`}</span></div>
-    ${grafDibujo(met)}`;
+    <div class="graf-seg" role="group" aria-label="Agrupar por">${seg}</div>${tablaBtn}`;
+  const des = lista.filter((m) => m.tipo === "desglose");
+  const desgloses = des.length ? `<div class="graf-des"><span>Desglose</span>${des.map((m) => `<button type="button" data-gm="${m.id}" data-n="${m.id === m0.id ? 1 : 0}" aria-pressed="${m.id === m0.id}">${icono(m.id)}${esc(m.t)}</button>`).join("")}</div>` : "";
+  const aviso = mets.length > 1 && mets[0].gr !== mets[1].gr && !E.graf.tabla ? '<p class="graf-nota">Cada métrica usa su propia escala: compará la tendencia y leé los valores escritos.</p>' : "";
+  return `<div class="graf-cab">${leyenda}<small class="graf-rango">${esc(rangoLeg)}</small></div>
+    <div class="graf-ctl">${controles}</div>
+    ${grafDibujo(mets)}${aviso}${desgloses}`;
 }
 const bloqueGraf = () => `<section class="bloque graf" id="graf">${grafCuerpo()}</section>`;
 function pintarGraf() {
@@ -460,6 +587,8 @@ function pintarGraf() {
   medirGraficos();
   el.innerHTML = grafCuerpo();
   activarGraficos(el);
+  sincronizarTiles();
+  GRAF.anim = false;
 }
 // Las fechas propias del gráfico se piden aparte: si fallan, solo avisa el gráfico.
 async function traerGraf(refrescar) {
@@ -480,6 +609,7 @@ async function traerGraf(refrescar) {
     GRAF.error = e.message;
   }
   GRAF.trae = false;
+  GRAF.anim = !refrescar;
   pintarGraf();
 }
 
@@ -521,8 +651,8 @@ function vistaGeneral() {
       }).join("")}</tbody></table></div></section>` : "";
   return `<div class="cab"><div><h1>Tablero general</h1><p class="sub">${rangoTxt(rango())} · ${lista.length} clientes</p></div>${fuentes()}</div>
     <div class="kpis">
-      ${kpi("Inversión Meta", money(inv), term ? "" : cambio(inv, num(GEN.prev?.spend)))}${kpi("Facturación tiendas", money(fac), term ? "" : cambio(fac, num(GEN.prev?.revenue)))}
-      ${kpi("MER global", merTxt(mer), (!term && num(GEN.prev?.spend) > 0 && cambio(mer, num(GEN.prev?.revenue) / num(GEN.prev?.spend))) || "Solo clientes con tienda", merCls(mer))}${kpi("Clientes con ventas", nf0.format(conT.filter((c) => c.fac > 0).length), `de ${conT.length} con tienda`)}
+      ${kpi("Inversión Meta", money(inv), term ? "" : cambio(inv, num(GEN.prev?.spend)), "", "inv")}${kpi("Facturación tiendas", money(fac), term ? "" : cambio(fac, num(GEN.prev?.revenue)), "", "fac")}
+      ${kpi("MER global", merTxt(mer), (!term && num(GEN.prev?.spend) > 0 && cambio(mer, num(GEN.prev?.revenue) / num(GEN.prev?.spend))) || "Solo clientes con tienda", merCls(mer), "mer")}${kpi("Clientes con ventas", nf0.format(conT.filter((c) => c.fac > 0).length), `de ${conT.length} con tienda`, "", "tie")}
     </div>
     <section class="bloque">
       <div class="barra"><input class="buscar" id="q" type="search" placeholder="Buscar cliente" value="${esc(E.q)}" aria-label="Buscar cliente">
@@ -535,7 +665,7 @@ function vistaGeneral() {
       <div class="pie"><span><span class="punto"></span>En vivo <span class="punto lento" style="margin-left:12px"></span>Tienda sin conectar: Master Metrics, cada 2 horas</span></div>
     </section>${tablaLeads}`;
 }
-const kpi = (t, v, sub = "", cls = "") => `<div class="kpi"><span>${esc(t)}</span><b class="${cls}">${esc(v)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</div>`;
+const kpi = (t, v, sub = "", cls = "", ic = "") => `<div class="kpi"><span class="kpi-t">${ic ? icono(ic) : ""}${esc(t)}</span><b class="${cls}">${esc(v)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</div>`;
 function fuentes() {
   const e = GEN.estado || {};
   const meta = e.meta_ultima_sync, tn = e.tn_ultima_sync, mm = e.mm_ultima_sync;
@@ -554,7 +684,11 @@ function vistaCliente() {
   const spend = dias.reduce((s, d) => s + num(d.spend), 0);
   if (c.kind === "leads") {
     const msgs = dias.reduce((s, d) => s + num(d.messages), 0);
-    return nombre + `<div class="kpis">${kpi("Inversión Meta", money(spend), cambio(spend, num(CLI.prev?.spend)))}${kpi("Mensajes", nf0.format(msgs), cambio(msgs, num(CLI.prev?.messages)))}${kpi("Costo por mensaje", msgs ? money(spend / msgs) : "—")}</div>` + bloqueGraf();
+    return nombre + tiles({
+      inv: [money(spend), cambio(spend, num(CLI.prev?.spend))],
+      msg: [nf0.format(msgs), cambio(msgs, num(CLI.prev?.messages))],
+      cpm: [msgs ? money(spend / msgs) : "—", ""],
+    }) + bloqueGraf();
   }
   const fac = dias.reduce((s, d) => s + num(d.revenue), 0);
   const mer = spend > 0 ? fac / spend : null;
@@ -572,17 +706,19 @@ function vistaCliente() {
     ? `<div class="tortas">${torta("Método de pago", CLI.pagos || [], pagoTxt)}${torta("Cuotas", CLI.cuotas || [], (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`))}${torta("Método de envío", CLI.envios || [], (k) => k)}${torta("Proveedor de pago", CLI.pasarelas || [], (k) => k)}${torta("Clientes nuevos y recurrentes", CLI.tipos || [], (k) => (k === "Nuevo" ? "Nuevos" : "Recurrentes"))}</div>`
     : "";
   return nombre + avisoConexion(conectada) + `
-    <div class="kpis">
-      ${kpi("Facturación Tiendanube", money(fac), cambio(fac, pFac))}${kpi("Inversión Meta", money(spend), cambio(spend, pInv))}
-      ${kpi("MER", merTxt(mer), pMer ? cambio(mer, pMer) : "", merCls(mer))}${kpi("Ventas", hayOrdenes ? nf0.format(ventas) : "—", hayOrdenes ? cambio(ventas, pVen) : "Disponible al conectar")}
-    </div>
-    <div class="kpis chico">
-      ${kpi("Ticket promedio", hayOrdenes && ventas ? money(fac / ventas) : "—", hayOrdenes && ventas ? cambio(fac / ventas, pTic) : "")}
-      ${kpi("Productos vendidos", conectada ? nf0.format(unidades) : "—", conectada ? cambio(unidades, pUni) : "")}
-      ${kpi("CAC", cac == null ? "—" : money(cac), compradoresCargando ? "Cargando historial: puede dar bajo" : (cac == null ? "" : cambio(cac, pCac)) || "Inversión ÷ clientes nuevos")}
-      ${kpi("Clientes nuevos", conectada ? nf0.format(nuevos) : "—", avisoCompradores || cambio(nuevos, pNue) || (conectada && nuevos + recs ? `${pct(nuevos, nuevos + recs)}% de las ventas` : ""))}
-      ${kpi("Pendiente de pago", conectada ? money(num(CLI.pendiente?.total)) : "—", conectada ? `${nf0.format(num(CLI.pendiente?.ordenes))} ${num(CLI.pendiente?.ordenes) === 1 ? "orden" : "órdenes"}` : "")}
-    </div>` +
+    ${tiles({
+      fac: [money(fac), cambio(fac, pFac)],
+      inv: [money(spend), cambio(spend, pInv)],
+      mer: [merTxt(mer), pMer ? cambio(mer, pMer) : "", merCls(mer)],
+      ven: [hayOrdenes ? nf0.format(ventas) : "—", hayOrdenes ? cambio(ventas, pVen) : ""],
+      tic: [hayOrdenes && ventas ? money(fac / ventas) : "—", hayOrdenes && ventas ? cambio(fac / ventas, pTic) : ""],
+      cac: [cac == null ? "—" : money(cac), compradoresCargando ? "Cargando historial: puede dar bajo" : (cac == null ? "" : cambio(cac, pCac)) || "Inversión ÷ clientes nuevos"],
+    })}
+    ${conectada ? `<div class="kpis chico">
+      ${kpi("Clientes nuevos", nf0.format(nuevos), avisoCompradores || cambio(nuevos, pNue) || (nuevos + recs ? `${pct(nuevos, nuevos + recs)}% de las ventas` : ""), "", "cli")}
+      ${kpi("Productos vendidos", nf0.format(unidades), cambio(unidades, pUni), "", "uni")}
+      ${kpi("Pendiente de pago", money(num(CLI.pendiente?.total)), `${nf0.format(num(CLI.pendiente?.ordenes))} ${num(CLI.pendiente?.ordenes) === 1 ? "orden" : "órdenes"}`, "", "pen")}
+    </div>` : ""}` +
     bloqueGraf() +
     cortes + lista;
 }
@@ -650,10 +786,11 @@ function vistaAgencia() {
   const conectados = tn.filter((c) => num(c.tiendas_vivo) >= c.tn_stores.length), faltan = tn.filter((c) => num(c.tiendas_vivo) < c.tn_stores.length);
   const link = GEN.app_id ? `https://www.tiendanube.com/apps/${encodeURIComponent(GEN.app_id)}/authorize` : null;
   return `<div class="cab"><div><h1>Cómo viene la agencia</h1><p class="sub">${rangoTxt(rango())} · sin clientes de leads</p></div>${fuentes()}</div>
-    <div class="kpis">
-      ${kpi("Facturación de clientes", money(fac), dif(fac, pf))}${kpi("Inversión gestionada", money(inv), dif(inv, pi))}
-      ${kpi("MER global", merTxt(mer), pm ? cambio(mer, pm) : "", merCls(mer))}${kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`)}
-    </div>` +
+    ${tiles({
+      fac: [money(fac), dif(fac, pf)],
+      inv: [money(inv), dif(inv, pi)],
+      mer: [merTxt(mer), pm ? cambio(mer, pm) : "", merCls(mer)],
+    }, kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`, "", "tie"))}` +
     bloqueGraf() +
     `<section class="bloque"><h2>Clientes por MER</h2>
       <div class="semaforo" role="img" aria-label="Distribución de clientes por MER">${seg(g, "var(--good)")}${seg(a, "var(--mid)")}${seg(r, "var(--bad)")}</div>
@@ -706,17 +843,13 @@ const vista = $("vista");
 vista.addEventListener("input", (e) => { if (e.target.id === "q") { E.q = e.target.value; pintar(); } });
 vista.addEventListener("change", (e) => {
   if (e.target.id === "soloActivos") { E.soloActivos = e.target.checked; pintar(); }
-  if (e.target.id === "grafP") {
-    E.graf.p = e.target.value; E.graf.g = null; GRAF.error = null;
-    pintarGraf(); traerGraf();
-  }
   if (e.target.id === "grafD" || e.target.id === "grafH") {
     let a = $("grafD").value, b = $("grafH").value;
     if (!a || !b) return;
     if (a > b) [a, b] = [b, a];
     if ((new Date(b) - new Date(a)) / 864e5 > 400) { const av = $("aviso"); av.textContent = "El rango máximo es de 400 días."; av.className = "aviso err"; av.hidden = false; return; }
     $("aviso").hidden = true;
-    E.graf.desde = a; E.graf.hasta = b; E.graf.g = null; GRAF.error = null;
+    E.graf.desde = a; E.graf.hasta = b; E.graf.g = null; GRAF.error = null; GRAF.anim = true;
     pintarGraf(); traerGraf();
   }
 });
@@ -729,9 +862,12 @@ vista.addEventListener("click", (e) => {
   }
   if (e.target.id === "linkCliente") return linkCliente(false);
   const gm = e.target.closest("[data-gm]");
-  if (gm) { E.graf.m = gm.dataset.gm; return pintarGraf(); }
+  if (gm) return elegirMetrica(gm.dataset.gm);
   const gg = e.target.closest("[data-gg]");
-  if (gg) { E.graf.g = gg.dataset.gg; return pintarGraf(); }
+  if (gg) { E.graf.g = gg.dataset.gg; GRAF.anim = true; return pintarGraf(); }
+  const gp = e.target.closest("[data-gper]");
+  if (gp) { E.graf.p = gp.dataset.gper; E.graf.g = null; GRAF.error = null; GRAF.anim = true; pintarGraf(); return traerGraf(); }
+  if (e.target.closest("[data-gtabla]")) { E.graf.tabla = !E.graf.tabla; return pintarGraf(); }
   if (e.target.id === "masOrdenes") { E.limite = Math.min(E.limite + 200, 500); return cargar({ silencio: true }); }
   const f = e.target.closest("tr.fila[data-id], .lista li[data-id]");
   if (f) irCliente(f.dataset.id);
