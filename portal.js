@@ -632,7 +632,8 @@ function vistaGeneral() {
   const th = (k, t, cl = "") => `<th class="${cl}"><button data-k="${k}" ${E.sortK === k ? `data-dir="${E.sortDir > 0 ? "↑" : "↓"}"` : ""}>${t}</button></th>`;
   const filas = lista.map((c) => {
     const w = c.mer == null ? 0 : Math.min(100, (c.mer / 12) * 100), mc = merCls(c.mer);
-    const nota = !c.tieneTienda ? "Sin tienda vinculada" : c.error_tienda ? "Problema de conexión con la tienda" : "";
+    const sinApp = c.tn_stores.length > 0 && num(c.tiendas_vivo) < c.tn_stores.length;
+    const nota = !c.tieneTienda ? "Sin tienda vinculada" : c.error_tienda ? "Problema de conexión con la tienda" : sinApp ? "Sin la app de Tiendanube" : "";
     const vivo = num(c.tiendas_vivo) > 0;
     return `<tr class="fila" tabindex="0" data-id="${esc(c.id)}">
       <td class="nom"><b><span class="punto ${vivo ? "" : "lento"}" title="${vivo ? "En vivo" : "Cada 2 horas"}"></span>${esc(c.name)}</b>${nota ? `<small>${nota}</small>` : ""}</td>
@@ -738,8 +739,10 @@ function avisoConexion(conectada) {
     const cob = (CLI.tiendas || []).map((t) => t.coverage_from).filter(Boolean).sort().pop();
     return conectada && !cob ? '<div class="aviso">Trayendo el historial de esta tienda. Mientras tanto, los días anteriores salen de Master Metrics.</div>' : "";
   }
-  const link = GEN.app_id ? `<a class="btn pri" href="https://www.tiendanube.com/apps/${encodeURIComponent(GEN.app_id)}/authorize" target="_blank" rel="noopener">Conectar tienda</a>` : "";
-  return `<div class="aviso">Esta tienda todavía no está conectada: los números salen de Master Metrics y faltan órdenes, cuotas y envíos.${link}</div>`;
+  const url = GEN.app_id ? `https://www.tiendanube.com/apps/${encodeURIComponent(GEN.app_id)}/authorize` : "";
+  return `<div class="aviso aviso-app"><div><b>Este cliente no tiene la app descargada en su tienda.</b> Compartile este link para que pueda hacerlo:</div>
+    ${url ? `<div class="aviso-link"><code>${esc(url)}</code><button type="button" class="btn" id="copiarApp" data-url="${esc(url)}">Copiar link</button></div>` : ""}
+    <small>Hasta que la instale, los números salen de Master Metrics y faltan órdenes, cuotas y envíos.</small></div>`;
 }
 const ESTADOS = { paid: ["Pagada", "ok"], pending: ["Sin pagar", "pend"], authorized: ["Autorizada", "pend"], voided: ["Anulada", "mal"], refunded: ["Reembolsada", "mal"], partially_paid: ["Sin pagar", "pend"], partially_refunded: ["Reembolso parcial", "mal"], abandoned: ["Abandonada", "mal"] };
 function tablaOrdenes() {
@@ -861,6 +864,11 @@ vista.addEventListener("click", (e) => {
     return pintar();
   }
   if (e.target.id === "linkCliente") return linkCliente(false);
+  if (e.target.id === "copiarApp") {
+    const b = e.target;
+    navigator.clipboard.writeText(b.dataset.url).then(() => { b.textContent = "¡Copiado!"; setTimeout(() => { b.textContent = "Copiar link"; }, 2000); }, () => { b.textContent = "Copialo a mano"; });
+    return;
+  }
   const gm = e.target.closest("[data-gm]");
   if (gm) return elegirMetrica(gm.dataset.gm);
   const gg = e.target.closest("[data-gg]");
