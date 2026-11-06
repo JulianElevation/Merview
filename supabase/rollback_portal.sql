@@ -5,7 +5,11 @@ do $$ begin
     perform cron.unschedule(jobname) from cron.job where jobname in ('tn-reconciliar','meta-sync','tn-limpiar');
   end if;
 end $$;
+drop function if exists public.portal_link_cliente(text,text,boolean);
+drop function if exists public.portal_mi_tablero(text,date,date,integer,integer);
 drop function if exists public.portal_cliente(text,text,date,date,integer,integer);
+drop function if exists public.portal_cliente_datos(text,date,date,integer,integer);
+drop table if exists public.client_links;
 drop function if exists public.portal_general(text,date,date);
 drop function if exists public.portal_serie(date,date);
 drop function if exists public.meta_upsert(jsonb);

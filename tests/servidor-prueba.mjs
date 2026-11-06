@@ -107,7 +107,15 @@ createServer(async (req, res) => {
     let cuerpo = ""; for await (const c of req) cuerpo += c;
     const a = JSON.parse(cuerpo);
     res.setHeader("Content-Type", "application/json");
+    if (m[1] === "portal_mi_tablero") {
+      if (a.p_token !== "cliente-a") { res.statusCode = 400; return res.end(JSON.stringify({ message: "clave_invalida" })); }
+      const r = cliente({ ...a, p_client: "a" });
+      delete r.cliente.tn_stores; delete r.cliente.woo_shops; delete r.cliente.meta_accounts;
+      r.tiendas.forEach((t) => { delete t.store_id; delete t.last_error; });
+      return res.end(JSON.stringify(r));
+    }
     if (a.p_key !== "prueba") { res.statusCode = 400; return res.end(JSON.stringify({ message: "clave_invalida" })); }
+    if (m[1] === "portal_link_cliente") return res.end(JSON.stringify(a.p_renovar ? "cliente-a-nuevo" : "cliente-a"));
     return res.end(JSON.stringify(m[1] === "portal_general" ? general(a) : cliente(a)));
   }
   if (url.pathname === "/config.js") {

@@ -35,6 +35,7 @@ await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_compradores.
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_fichas_portal.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal_vistas.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal_rapido.sql"), "utf8"));
+await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_link_cliente.sql"), "utf8"));
 console.log("ok  la migración corre completa");
 
 const hoy = (await q(`select (now() at time zone 'America/Argentina/Buenos_Aires')::date::text d`))[0].d;
@@ -164,6 +165,47 @@ assert.deepEqual(permisos[0], { tok: false, ord: false, up: false, upb: false, s
 const txt = JSON.stringify(r2);
 assert.ok(!txt.includes("buyer_hash") && !txt.includes("access_token"), "no salen huellas ni tokens");
 console.log("ok  clave, permisos y datos que no salen");
+
+// Link por cliente: abre solo ese cliente y no sirve para nada más.
+const tokenDe = async (c, r = false) => (await q(`select public.portal_link_cliente('clave',$1,$2) t`, [c, r]))[0].t;
+const tA = await tokenDe("a"), tB = await tokenDe("b");
+assert.match(tA, /^[a-f0-9]{64}$/);
+assert.notEqual(tA, tB);
+assert.equal(await tokenDe("a"), tA, "volver a pedirlo devuelve el mismo link");
+const propio = (await q(`select public.portal_mi_tablero($1,$2::date,$2::date) r`, [tA, hoy]))[0].r;
+assert.equal(propio.cliente.id, "a");
+assert.ok(propio.ordenes.length > 0);
+const delEquipo = (await q(`select public.portal_cliente('clave','a',$1::date,$1::date) r`, [hoy]))[0].r;
+assert.deepEqual(propio.dias, delEquipo.dias, "los mismos números que ve el equipo");
+assert.equal(propio.cliente.meta_accounts, undefined);
+assert.equal(propio.cliente.tn_stores, undefined);
+assert.equal(propio.tiendas[0].last_error, undefined);
+assert.equal(propio.tiendas[0].store_id, undefined);
+assert.equal(propio.tiendas[0].conectada, true);
+const deB = (await q(`select public.portal_mi_tablero($1,$2::date,$2::date) r`, [tB, hoy]))[0].r;
+assert.equal(deB.cliente.id, "b", "cada link abre su cliente");
+assert.ok(!JSON.stringify(deB).includes("Cliente A"), "no aparece otro cliente");
+await assert.rejects(q(`select public.portal_general($1,now()::date,now()::date)`, [tA]), /clave_invalida/);
+await assert.rejects(q(`select public.portal_cliente($1,'b',now()::date,now()::date)`, [tA]), /clave_invalida/);
+await assert.rejects(q(`select public.portal_cliente($1,'a',now()::date,now()::date)`, [tA]), /clave_invalida/);
+await assert.rejects(q(`select public.portal_link_cliente($1,'b')`, [tA]), /clave_invalida/);
+await assert.rejects(q(`select public.portal_mi_tablero('clave',now()::date,now()::date)`), /clave_invalida/, "la clave del equipo no entra por acá");
+await assert.rejects(q(`select public.portal_mi_tablero('',now()::date,now()::date)`), /clave_invalida/);
+await assert.rejects(q(`select public.portal_mi_tablero(null,now()::date,now()::date)`), /clave_invalida/);
+await assert.rejects(q(`select public.portal_mi_tablero($1,'2020-01-01','2026-01-01')`, [tA]), /rango_invalido/);
+const permLink = (await q(`select
+  has_table_privilege('anon','public.client_links','select') tabla,
+  has_function_privilege('anon','public.portal_cliente_datos(text,date,date,integer,integer)','execute') datos,
+  has_function_privilege('anon','public.portal_mi_tablero(text,date,date,integer,integer)','execute') tablero`))[0];
+assert.deepEqual(permLink, { tabla: false, datos: false, tablero: true });
+const tA2 = await tokenDe("a", true);
+assert.notEqual(tA2, tA);
+await assert.rejects(q(`select public.portal_mi_tablero($1,now()::date,now()::date)`, [tA]), /clave_invalida/, "renovar corta el link viejo");
+assert.equal((await q(`select public.portal_mi_tablero($1,$2::date,$2::date) r`, [tA2, hoy]))[0].r.cliente.id, "a");
+await db.exec(`update public.clients set active=false where id='b'`);
+await assert.rejects(q(`select public.portal_mi_tablero($1,now()::date,now()::date)`, [tB]), /cliente_inexistente/, "cliente dado de baja");
+await db.exec(`update public.clients set active=true where id='b'`);
+console.log("ok  link por cliente: abre solo ese cliente");
 
 await db.exec(readFileSync(join(raiz, "supabase/rollback_portal.sql"), "utf8"));
 assert.equal((await q(`select count(*)::int n from public.clients`))[0].n, 4);

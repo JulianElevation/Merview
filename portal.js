@@ -1,7 +1,9 @@
 "use strict";
 const CFG = window.MERVIEW_CONFIG || {};
-const KEY_STORE = "merview_key", POLL_MS = 20000, TZ = "America/Argentina/Buenos_Aires";
+const KEY_STORE = "merview_key", CLIENTE_STORE = "merview_cliente", POLL_MS = 20000, TZ = "America/Argentina/Buenos_Aires";
 const $ = (id) => document.getElementById(id);
+// Link de cliente: ve solo su tablero. La base decide qué datos salen, esto solo ordena la pantalla.
+let modoCliente = false;
 
 /* ---------- Formato ---------- */
 const nf0 = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
@@ -16,7 +18,7 @@ function corto(v) {
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const num = (v) => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
 const merTxt = (v) => (v == null || !isFinite(v) ? "—" : v.toFixed(2).replace(".", ","));
-const merCls = (v) => (v == null || !isFinite(v) ? "na" : v >= 6 ? "g" : v >= 3 ? "m" : "r");
+const merCls = (v) => (modoCliente ? "" : v == null || !isFinite(v) ? "na" : v >= 6 ? "g" : v >= 3 ? "m" : "r");
 const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
 const hora = (s) => new Date(s).toLocaleTimeString("es-AR", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
 const fechaHora = (s) => new Date(s).toLocaleString("es-AR", { timeZone: TZ, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
@@ -70,34 +72,48 @@ let clave = null, GEN = null, CLI = null, ultimaOk = null, turno = 0, timer = nu
 
 function leerUrl() {
   const u = new URLSearchParams(location.search);
-  if (u.get("c")) { E.c = u.get("c"); E.v = "cliente"; }
-  if (u.get("v") === "agencia") E.v = "agencia";
+  if (!modoCliente && u.get("c")) { E.c = u.get("c"); E.v = "cliente"; }
+  if (!modoCliente && u.get("v") === "agencia") E.v = "agencia";
   if (u.get("p")) E.p = u.get("p");
   if (u.get("d")) E.desde = u.get("d");
   if (u.get("h")) E.hasta = u.get("h");
 }
 function escribirUrl() {
   const u = new URLSearchParams();
-  if (E.v === "cliente" && E.c) u.set("c", E.c);
+  if (!modoCliente && E.v === "cliente" && E.c) u.set("c", E.c);
   if (E.v === "agencia") u.set("v", "agencia");
   if (E.p !== "mes") u.set("p", E.p);
   if (E.p === "rango" && E.desde) { u.set("d", E.desde); u.set("h", E.hasta); }
   const qs = u.toString();
-  history.replaceState(null, "", location.pathname + (qs ? "?" + qs : ""));
+  // El link del cliente queda en la barra: así lo puede guardar en favoritos.
+  history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + (modoCliente ? location.hash : ""));
 }
 
 /* ---------- Acceso (misma clave que MER View) ---------- */
 function leerClave() {
+  const t = location.hash.match(/[#&]t=([A-Za-z0-9_-]+)/);
+  if (t) {
+    modoCliente = true;
+    try { localStorage.setItem(CLIENTE_STORE, t[1]); } catch (e) {}
+    return t[1];
+  }
   const m = location.hash.match(/[#&]k=([A-Za-z0-9_-]+)/);
   if (m) {
     try { localStorage.setItem(KEY_STORE, m[1]); } catch (e) {}
     history.replaceState(null, "", location.pathname + location.search);
     return m[1];
   }
-  try { return localStorage.getItem(KEY_STORE); } catch (e) { return null; }
+  try {
+    const equipo = localStorage.getItem(KEY_STORE);
+    if (equipo) return equipo;
+    const cliente = localStorage.getItem(CLIENTE_STORE);
+    if (cliente) modoCliente = true;
+    return cliente;
+  } catch (e) { return null; }
 }
 function bloquear(msg) {
   $("app").hidden = true; $("login").hidden = false;
+  if (modoCliente) $("loginSub").hidden = true;
   if (msg) { $("loginErr").textContent = msg; $("loginErr").hidden = false; }
   clearInterval(timer);
 }
@@ -105,7 +121,7 @@ async function rpc(fn, args) {
   const r = await fetch(`${CFG.supabaseUrl}/rest/v1/rpc/${fn}`, {
     method: "POST",
     headers: { apikey: CFG.supabaseKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ p_key: clave, ...args }),
+    body: JSON.stringify({ ...(modoCliente ? { p_token: clave } : { p_key: clave }), ...args }),
   });
   const data = await r.json().catch(() => null);
   if (!r.ok) {
@@ -122,20 +138,25 @@ async function cargar(opts = {}) {
   const [d, h] = rango();
   if (!opts.silencio) { $("vista").innerHTML = '<div class="skel"></div><div class="skel"></div>'; pintarControles(); }
   try {
-    const g = rpc("portal_general", { p_since: d, p_until: h });
-    const c = E.v === "cliente" && E.c
+    const g = modoCliente ? null : rpc("portal_general", { p_since: d, p_until: h });
+    const c = modoCliente ? rpc("portal_mi_tablero", { p_since: d, p_until: h, p_limit: E.limite, p_offset: 0 })
+      : E.v === "cliente" && E.c
       ? rpc("portal_cliente", { p_client: E.c, p_since: d, p_until: h, p_limit: E.limite, p_offset: 0 }) : null;
     const [rg, rc] = await Promise.all([g, c]);
     if (t !== turno) return;
     GEN = rg; CLI = rc; ultimaOk = Date.now(); sondeo = !!opts.silencio;
+    if (modoCliente) E.c = CLI.cliente.id;
     $("login").hidden = true; $("app").hidden = false;
     pintar();
     sondeo = false;
     primeraVez = false;
   } catch (e) {
     if (t !== turno) return;
-    if (e.clave) { try { localStorage.removeItem(KEY_STORE); } catch (_) {} return bloquear("El link de acceso ya no es válido. Pedí el link nuevo."); }
-    if (primeraVez) return bloquear("No se pudo cargar el portal: " + e.message);
+    if (e.clave) {
+      try { localStorage.removeItem(modoCliente ? CLIENTE_STORE : KEY_STORE); } catch (_) {}
+      return bloquear(modoCliente ? "Este link ya no está activo. Pedile uno nuevo a tu contacto de Elevation." : "El link de acceso ya no es válido. Pedí el link nuevo.");
+    }
+    if (primeraVez) return bloquear(modoCliente ? "No se pudieron traer los datos. Probá de nuevo en unos minutos." : "No se pudo cargar el portal: " + e.message);
     if (!opts.silencio) $("vista").innerHTML = `<div class="aviso err">No se pudieron traer los datos (${esc(e.message)}). Probá de nuevo en unos segundos.</div>`;
   } finally { pulso(); }
 }
@@ -177,7 +198,27 @@ function abrirMenu(si) {
   $("pickBtn").setAttribute("aria-expanded", si ? "true" : "false");
   if (si) { $("menuQ").value = ""; pintarMenu(); $("menuQ").focus(); }
 }
-function irCliente(id) { E.c = id; E.v = "cliente"; E.limite = 100; ultimoNumero = null; abrirMenu(false); escribirUrl(); cargar(); }
+function irCliente(id) { E.c = id; E.v = "cliente"; E.limite = 100; ultimoNumero = null; $("aviso").hidden = true; abrirMenu(false); escribirUrl(); cargar(); }
+
+/* ---------- Link para el cliente ---------- */
+async function linkCliente(renovar) {
+  const a = $("aviso"), id = E.c, nombre = CLI?.cliente?.name || "este cliente";
+  if (renovar && !confirm(`El link actual de ${nombre} va a dejar de funcionar. ¿Crear uno nuevo?`)) return;
+  try {
+    const token = await rpc("portal_link_cliente", { p_client: id, p_renovar: !!renovar });
+    if (E.c !== id) return;
+    const url = `${location.origin}${location.pathname}#t=${token}`;
+    let copiado = false;
+    try { await navigator.clipboard.writeText(url); copiado = true; } catch (_) {}
+    a.className = "aviso ok"; a.hidden = false;
+    a.innerHTML = `<b>${copiado ? "Link copiado" : "Copiá este link"} de ${esc(nombre)}.</b> Pasáselo solo a ese cliente: abre únicamente su tablero.<br><code style="word-break:break-all">${esc(url)}</code><br><button class="btn" id="renovarLink" style="margin-top:8px">Cambiar link</button>`;
+    a.scrollIntoView({ block: "nearest" });
+  } catch (e) {
+    a.className = "aviso err"; a.hidden = false;
+    a.textContent = "No se pudo crear el link: " + e.message;
+  }
+}
+$("aviso").addEventListener("click", (e) => { if (e.target.id === "renovarLink") linkCliente(true); });
 
 /* ---------- Gráficos ---------- */
 const movil = () => window.matchMedia("(max-width:640px)").matches;
@@ -413,7 +454,7 @@ function fuentes() {
 function vistaCliente() {
   if (!E.c || !CLI) return `<div class="cab"><h1>Elegí un cliente</h1></div><p class="sub">Usá el desplegable de arriba.</p>`;
   const c = CLI.cliente, dias = diasCompletos(CLI.dias || []);
-  const nombre = `<div class="cab"><div><h1>${esc(c.name)}</h1><p class="sub">${rangoTxt(rango())}</p></div>${fuentesCliente()}</div>`;
+  const nombre = `<div class="cab"><div><h1>${esc(c.name)}</h1><p class="sub">${rangoTxt(rango())}</p></div><div class="cab-der">${fuentesCliente()}${modoCliente ? "" : '<button class="btn" id="linkCliente">Link para el cliente</button>'}</div></div>`;
   const spend = dias.reduce((s, d) => s + num(d.spend), 0);
   const unDia = dias.length < 2;
   const resumen = (v) => v;
@@ -459,6 +500,7 @@ function vistaCliente() {
 }
 const msg1 = () => '<div class="sinchart">Elegí un rango de más de un día para ver la evolución.</div>';
 function fuentesCliente() {
+  if (modoCliente) return "";
   const t = (CLI.tiendas || []).filter((x) => x.conectada);
   const ult = t.map((x) => x.last_webhook_at || x.last_sync_at).filter(Boolean).sort().pop();
   const tn = (CLI.cliente.tn_stores || []).length === 0 ? "" : t.length
@@ -468,6 +510,7 @@ function fuentesCliente() {
   return `<div class="fuentes">${tn}${meta}</div>`;
 }
 function avisoConexion(conectada) {
+  if (modoCliente) return "";
   if (conectada || !(CLI.cliente.tn_stores || []).length) {
     const cob = (CLI.tiendas || []).map((t) => t.coverage_from).filter(Boolean).sort().pop();
     return conectada && !cob ? '<div class="aviso">Trayendo el historial de esta tienda. Mientras tanto, los días anteriores salen de Master Metrics.</div>' : "";
@@ -555,7 +598,7 @@ function pintar() {
 }
 
 /* ---------- Eventos ---------- */
-document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { E.v = b.dataset.v; escribirUrl(); cargar(); }));
+document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => { E.v = b.dataset.v; $("aviso").hidden = true; escribirUrl(); cargar(); }));
 document.querySelectorAll("#fechas button").forEach((b) => b.addEventListener("click", () => { E.p = b.dataset.p; E.limite = 100; escribirUrl(); pintarControles(); cargar(); programar(); }));
 function cambiarRango() {
   let a = $("dDesde").value, b = $("dHasta").value;
@@ -584,6 +627,7 @@ vista.addEventListener("click", (e) => {
     if (E.sortK === k) E.sortDir = -E.sortDir; else { E.sortK = k; E.sortDir = k === "name" ? 1 : -1; }
     return pintar();
   }
+  if (e.target.id === "linkCliente") return linkCliente(false);
   if (e.target.id === "masOrdenes") { E.limite = Math.min(E.limite + 200, 500); return cargar({ silencio: true }); }
   const f = e.target.closest("tr.fila[data-id], .lista li[data-id]");
   if (f) irCliente(f.dataset.id);
@@ -594,8 +638,8 @@ vista.addEventListener("keydown", (e) => {
 vista.addEventListener("toggle", (e) => { const id = e.target.dataset?.id; if (id) E.abiertos[id] = e.target.open; }, true);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && clave && incluyeHoy()) cargar({ silencio: true }); });
 let finResize = null;
-window.addEventListener("resize", () => { clearTimeout(finResize); finResize = setTimeout(() => { if (GEN) pintar(); }, 200); });
-window.addEventListener("hashchange", () => { if (/[#&]k=/.test(location.hash)) location.reload(); });
+window.addEventListener("resize", () => { clearTimeout(finResize); finResize = setTimeout(() => { if (GEN || CLI) pintar(); }, 200); });
+window.addEventListener("hashchange", () => { if (/[#&][kt]=/.test(location.hash)) location.reload(); });
 
 /* ---------- Avisos al volver de conectar una tienda ---------- */
 const ERRORES = {
@@ -615,6 +659,7 @@ const ERRORES = {
 clave = leerClave();
 if (!clave) bloquear();
 else {
+  if (modoCliente) { E.v = "cliente"; document.body.classList.add("modo-cliente"); }
   leerUrl(); escribirUrl();
   $("app").hidden = false;
   cargar();

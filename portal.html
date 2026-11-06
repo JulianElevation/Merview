@@ -31,6 +31,8 @@ a{color:var(--accent2)}
 .tabs{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px}
 .tabs button{border:0;background:transparent;color:var(--muted);padding:6px 12px;border-radius:7px;cursor:pointer;font-size:14px}
 .tabs button[aria-pressed="true"]{background:var(--accent);color:#fff;font-weight:500}
+.modo-cliente .tabs,.modo-cliente .pick{display:none}
+.cab-der{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px 12px}
 .pick{position:relative}
 .pick>button{display:flex;align-items:center;gap:8px;max-width:260px;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:7px 12px;cursor:pointer;font-size:14px}
 .pick>button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -190,7 +192,7 @@ td.izq,th.izq{text-align:left}
 <body>
 <section class="login" id="login" hidden>
   <h1>Portal Elevation</h1>
-  <p class="sub">Para entrar necesitás el link de acceso de Elevation. Pedíselo a Julián.</p>
+  <p class="sub" id="loginSub">Para entrar necesitás el link de acceso de Elevation. Pedíselo a Julián.</p>
   <p class="aviso err" id="loginErr" hidden></p>
 </section>
 
