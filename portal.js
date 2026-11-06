@@ -67,7 +67,7 @@ function ultimosMeses() {
 }
 
 /* ---------- Estado ---------- */
-const E = { v: "general", c: null, p: "mes", desde: null, hasta: null, q: "", soloActivos: true, sortK: "spend", sortDir: -1, limite: 100, abiertos: { fac: true } };
+const E = { v: "general", c: null, p: "mes", desde: null, hasta: null, q: "", soloActivos: true, sortK: "spend", sortDir: -1, limite: 100, graf: { m: "fac", p: "arriba", g: null, desde: null, hasta: null } };
 let clave = null, GEN = null, CLI = null, ultimaOk = null, turno = 0, timer = null, ultimoNumero = null, sondeo = false, primeraVez = true;
 
 function leerUrl() {
@@ -238,7 +238,7 @@ function ejes(puntos, tope, paso, fmtY) {
     s += `<text x="${izq - 8}" y="${y + 4}" text-anchor="end">${esc(fmtY(v))}</text>`;
   }
   const slot = (W - izq - der) / puntos.length, cada = Math.max(1, Math.ceil(puntos.length / Math.max(3, Math.floor((W - izq) / 62))));
-  puntos.forEach((p, i) => { if (i % cada === 0) s += `<text x="${izq + slot * i + slot / 2}" y="${H - 8}" text-anchor="middle">${p.label ?? ddmm(p.day)}</text>`; });
+  puntos.forEach((p, i) => { if (i % cada === 0) s += `<text x="${izq + slot * i + slot / 2}" y="${H - 8}" text-anchor="middle">${p.corto ?? p.label ?? ddmm(p.day)}</text>`; });
   return s;
 }
 function grafico(puntos, tipo, color, fmtY, fmtTip) {
@@ -316,21 +316,8 @@ function tablaProductos() {
     <div class="tablebox"><table><thead><tr><th>Producto</th><th>Unidades</th><th class="hm">% del ranking</th><th>Importe</th></tr></thead>
     <tbody>${p.map((x) => `<tr><td class="nom"><b>${esc(x.nombre)}</b></td><td>${nf0.format(num(x.unidades))}</td><td class="hm">${pct(num(x.unidades), tot)}%</td><td>${money(num(x.total))}</td></tr>`).join("")}</tbody></table></div></section>`;
 }
-function vistasPorMes() {
-  const meses = ultimosMeses(), m = new Map((CLI.meses || []).map((x) => [x.mes, x]));
-  const puntos = (f) => meses.map((k) => ({ label: mesTxt(k), v: m.has(k) ? f(m.get(k)) : null }));
-  const cero = (f) => meses.map((k) => ({ label: mesTxt(k), v: m.has(k) ? f(m.get(k)) : 0 }));
-  const clientes = meses.map((k) => ({ label: mesTxt(k), partes: { Nuevo: num(m.get(k)?.nuevos), Recurrente: num(m.get(k)?.recurrentes) } }));
-  return `<h2 class="titulo-sec">Últimos 12 meses</h2><p class="sub">No dependen de las fechas elegidas arriba. Solo cuentan órdenes de la tienda conectada.</p>` +
-    desplegable("mfac", "Facturación por mes", "", grafico(cero((x) => num(x.revenue)), "barras", "var(--serie)", corto, (p) => `${p.label} · ${money(p.v)}`)) +
-    desplegable("mven", "Ventas por mes", "", grafico(cero((x) => num(x.ventas)), "barras", "var(--serie2)", (v) => nf0.format(v), (p) => `${p.label} · ${nf0.format(p.v)} ventas`)) +
-    desplegable("mtic", "Ticket promedio por mes", "", grafico(puntos((x) => (num(x.ventas) ? num(x.revenue) / num(x.ventas) : null)), "linea", "var(--s4)", corto, (p) => `${p.label} · ${p.v == null ? "—" : money(p.v)}`)) +
-    desplegable("mcli", "Clientes nuevos y recurrentes por mes", "", apiladas(clientes, ["Nuevo", "Recurrente"], (k) => (k === "Nuevo" ? "Nuevos" : "Recurrentes"))) +
-    desplegable("mpag", "Método de pago por mes", "", porMes(CLI.meses_pagos || [], pagoTxt)) +
-    desplegable("mcuo", "Cuotas por mes", "", porMes(CLI.meses_cuotas || [], (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`)));
-}
-function activarGraficos() {
-  document.querySelectorAll(".chart").forEach((ch) => {
+function activarGraficos(raiz = document) {
+  raiz.querySelectorAll(".chart").forEach((ch) => {
     const tip = ch.querySelector(".tip");
     if (!tip) return;
     const mostrar = (h) => {
@@ -378,13 +365,120 @@ function torta(titulo, filas, etiqueta) {
   return `<section class="torta"><h2>${esc(titulo)}</h2><div class="in"><svg viewBox="0 0 100 100" role="img" aria-label="${esc(titulo)}">${svg}</svg><ul class="ley">${ley}</ul></div></section>`;
 }
 
-function desplegable(id, titulo, resumen, cuerpo) {
-  return `<details class="bloque" data-id="${id}" ${E.abiertos[id] ? "open" : ""}><summary><h2>${esc(titulo)}</h2><small>${esc(resumen)}</small></summary>${cuerpo}</details>`;
-}
-function diasCompletos(dias) {
-  const [a, b] = rango(), m = new Map(dias.map((d) => [d.day, d])), out = [];
-  for (let d = a; d <= b; d = sumar(d, 1)) out.push(m.get(d) || { day: d, revenue: 0, spend: 0, orders: 0, messages: 0, nuevos: 0 });
+function completar(dias, a, b) {
+  const m = new Map(dias.map((d) => [d.day, d])), out = [];
+  for (let d = a; d <= b; d = sumar(d, 1)) out.push(m.get(d) || { day: d, revenue: 0, spend: 0, orders: 0, messages: 0, nuevos: 0, recurrentes: 0 });
   return out;
+}
+function diasCompletos(dias) { const [a, b] = rango(); return completar(dias, a, b); }
+
+/* ---------- Gráfico único: qué mirar, qué fechas y cómo agrupar ---------- */
+const GRAF = { datos: null, clave: null, trae: false, cuando: 0, error: null, turno: 0 };
+const PERIODOS = [["arriba", "Las fechas de arriba"], ["7d", "Últimos 7 días"], ["30d", "Últimos 30 días"], ["90d", "Últimos 90 días"], ["anio", "Este año"], ["12m", "Últimos 12 meses"], ["rango", "Elegir fechas"]];
+const AGRUPAR = [["d", "Día"], ["s", "Semana"], ["m", "Mes"]];
+function grafRango() {
+  const h = hoyBA(), g = E.graf;
+  switch (g.p) {
+    case "7d": return [sumar(h, -6), h];
+    case "30d": return [sumar(h, -29), h];
+    case "90d": return [sumar(h, -89), h];
+    case "anio": return [h.slice(0, 4) + "-01-01", h];
+    case "12m": return [sumar(h, -364), h];
+    case "rango": return [g.desde || sumar(h, -29), g.hasta || h];
+    default: return rango();
+  }
+}
+const grafClave = () => { const [a, b] = grafRango(); return [E.v === "agencia" ? "agencia" : E.c, a, b].join("|"); };
+function grafDias() {
+  if (E.graf.p === "arriba") return (E.v === "agencia" ? GEN?.dias : CLI?.dias) || [];
+  return GRAF.clave === grafClave() ? GRAF.datos : null;
+}
+function grafAgrupacion() {
+  if (E.graf.g) return E.graf.g;
+  const [a, b] = grafRango(), n = (new Date(b) - new Date(a)) / 864e5;
+  return n <= 62 ? "d" : n <= 183 ? "s" : "m";
+}
+function lunes(d) {
+  const dia = new Date(d + "T12:00:00Z").getUTCDay();
+  return sumar(d, -((dia + 6) % 7));
+}
+function grafPuntos(dias) {
+  const [a, b] = grafRango(), g = grafAgrupacion(), grupos = new Map();
+  completar(dias, a, b).forEach((d) => {
+    const k = g === "s" ? lunes(d.day) : g === "m" ? d.day.slice(0, 7) : d.day;
+    if (!grupos.has(k)) grupos.set(k, { label: g === "m" ? mesTxt(k) : ddmm(k), tip: g === "s" ? `Semana del ${ddmm(k)}` : g === "m" ? mesTxt(k) : ddmm(k), revenue: 0, orders: 0, spend: 0, messages: 0, nuevos: 0, recurrentes: 0 });
+    const x = grupos.get(k);
+    ["revenue", "orders", "spend", "messages", "nuevos", "recurrentes"].forEach((c) => { x[c] += num(d[c]); });
+  });
+  return [...grupos.values()];
+}
+const cantidad = (v) => nf0.format(v);
+function grafMetricas() {
+  const barra = (id, t, campo, color, fmtY, fmtV) => ({ id, t, tipo: "barras", color, fmtY, fmtV, v: (x) => x[campo], tot: (ps) => ps.reduce((s, x) => s + x[campo], 0) });
+  const razon = (id, t, arr, aba, color, fmtY, fmtV) => ({ id, t, tipo: "linea", color, fmtY, fmtV, v: (x) => (x[aba] > 0 ? x[arr] / x[aba] : null), tot: (ps) => { const m = ps.reduce((s, x) => s + x[aba], 0); return m > 0 ? ps.reduce((s, x) => s + x[arr], 0) / m : null; } });
+  const fac = barra("fac", "Facturación", "revenue", "var(--serie)", corto, money);
+  const inv = barra("inv", "Inversión", "spend", "var(--serie)", corto, money);
+  const mer = razon("mer", "MER", "revenue", "spend", "var(--serie2)", merTxt, merTxt);
+  if (E.v === "agencia") return [fac, inv, mer];
+  if (CLI?.cliente?.kind === "leads") return [inv, barra("msg", "Mensajes", "messages", "var(--serie2)", cantidad, cantidad), razon("cpm", "Costo por mensaje", "spend", "messages", "var(--s4)", corto, money)];
+  if (!(CLI?.tiendas || []).some((t) => t.conectada)) return [fac, inv, mer];
+  return [fac, barra("ven", "Ventas", "orders", "var(--serie2)", cantidad, cantidad), razon("tic", "Ticket", "revenue", "orders", "var(--s4)", corto, money), inv, mer,
+    razon("cac", "CAC", "spend", "nuevos", "var(--s4)", corto, money),
+    { id: "cli", t: "Nuevos y recurrentes", tipo: "apil" }, { id: "pag", t: "Método de pago", tipo: "mes" }, { id: "cuo", t: "Cuotas", tipo: "mes" }];
+}
+function grafDibujo(met) {
+  if (met.id === "pag") return porMes(CLI.meses_pagos || [], pagoTxt);
+  if (met.id === "cuo") return porMes(CLI.meses_cuotas || [], (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`));
+  if (GRAF.error && E.graf.p !== "arriba") return '<div class="sinchart">No se pudieron traer estas fechas. Probá de nuevo o elegí un período más corto.</div>';
+  const dias = grafDias();
+  if (!dias) return '<div class="sinchart">Cargando…</div>';
+  const ps = grafPuntos(dias);
+  if (met.tipo === "apil") return apiladas(ps.map((x) => ({ label: x.tip, corto: x.label, partes: { Nuevo: x.nuevos, Recurrente: x.recurrentes } })), ["Nuevo", "Recurrente"], (k) => (k === "Nuevo" ? "Nuevos" : "Recurrentes"));
+  return grafico(ps.map((x) => ({ label: x.label, tip: x.tip, v: met.v(x) })), met.tipo, met.color, met.fmtY, (p) => `${p.tip} · ${p.v == null ? "—" : met.fmtV(p.v)}`);
+}
+function grafCuerpo() {
+  const lista = grafMetricas(), met = lista.find((m) => m.id === E.graf.m) || lista[0], fijo = met.tipo === "mes";
+  const [a, b] = grafRango(), g = grafAgrupacion(), dias = fijo ? null : grafDias();
+  const total = dias && met.tot ? met.tot(grafPuntos(dias)) : null;
+  const pills = lista.map((m) => `<button type="button" data-gm="${m.id}" aria-pressed="${m.id === met.id}">${esc(m.t)}</button>`).join("");
+  const opciones = PERIODOS.map(([k, t]) => `<option value="${k}" ${k === E.graf.p ? "selected" : ""}>${esc(t)}</option>`).join("");
+  const seg = AGRUPAR.map(([k, t]) => `<button type="button" data-gg="${k}" aria-pressed="${k === g}">${t}</button>`).join("");
+  const controles = fijo ? '<span class="sub">Por mes, últimos 12 meses</span>' : `<label class="graf-per">Período
+      <select id="grafP">${opciones}</select></label>
+    ${E.graf.p === "rango" ? `<span class="rango"><input type="date" id="grafD" value="${a}" aria-label="Desde"><span>a</span><input type="date" id="grafH" value="${b}" aria-label="Hasta"></span>` : ""}
+    <div class="graf-seg" role="group" aria-label="Agrupar por">${seg}</div>`;
+  return `<div class="graf-met" role="group" aria-label="Qué mirar">${pills}</div>
+    <div class="graf-ctl">${controles}<span class="graf-tot">${fijo || total == null ? "" : `<small>${esc(a.slice(0, 4) === b.slice(0, 4) ? rangoTxt([a, b]) : `${ddmm(a)}/${a.slice(2, 4)} al ${ddmm(b)}/${b.slice(2, 4)}`)}</small><b>${esc(met.fmtV(total))}</b>`}</span></div>
+    ${grafDibujo(met)}`;
+}
+const bloqueGraf = () => `<section class="bloque graf" id="graf">${grafCuerpo()}</section>`;
+function pintarGraf() {
+  const el = $("graf");
+  if (!el) return;
+  medirGraficos();
+  el.innerHTML = grafCuerpo();
+  activarGraficos(el);
+}
+// Las fechas propias del gráfico se piden aparte: si fallan, solo avisa el gráfico.
+async function traerGraf(refrescar) {
+  if (E.v === "general" || E.graf.p === "arriba") return;
+  const clave = grafClave(), [a, b] = grafRango();
+  if (!refrescar && GRAF.clave === clave && (GRAF.datos || GRAF.trae || GRAF.error)) return;
+  const t = ++GRAF.turno;
+  if (GRAF.clave !== clave) GRAF.datos = null;
+  GRAF.clave = clave; GRAF.trae = true; GRAF.error = null;
+  try {
+    const r = E.v === "agencia" ? await rpc("portal_general", { p_since: a, p_until: b })
+      : modoCliente ? await rpc("portal_mi_tablero", { p_since: a, p_until: b, p_limit: 0, p_offset: 0 })
+      : await rpc("portal_cliente", { p_client: E.c, p_since: a, p_until: b, p_limit: 0, p_offset: 0 });
+    if (t !== GRAF.turno) return;
+    GRAF.datos = r.dias || []; GRAF.cuando = Date.now();
+  } catch (e) {
+    if (t !== GRAF.turno) return;
+    GRAF.error = e.message;
+  }
+  GRAF.trae = false;
+  pintarGraf();
 }
 
 /* ---------- Vista: General ---------- */
@@ -456,13 +550,9 @@ function vistaCliente() {
   const c = CLI.cliente, dias = diasCompletos(CLI.dias || []);
   const nombre = `<div class="cab"><div><h1>${esc(c.name)}</h1><p class="sub">${rangoTxt(rango())}</p></div><div class="cab-der">${fuentesCliente()}${modoCliente ? "" : '<button class="btn" id="linkCliente">Link para el cliente</button>'}</div></div>`;
   const spend = dias.reduce((s, d) => s + num(d.spend), 0);
-  const unDia = dias.length < 2;
-  const resumen = (v) => v;
   if (c.kind === "leads") {
     const msgs = dias.reduce((s, d) => s + num(d.messages), 0);
-    return nombre + `<div class="kpis">${kpi("Inversión Meta", money(spend), cambio(spend, num(CLI.prev?.spend)))}${kpi("Mensajes", nf0.format(msgs), cambio(msgs, num(CLI.prev?.messages)))}${kpi("Costo por mensaje", msgs ? money(spend / msgs) : "—")}</div>` +
-      desplegable("inv", "Inversión por día", money(spend), unDia ? msg1() : grafico(dias.map((d) => ({ day: d.day, v: num(d.spend) })), "barras", "var(--serie)", corto, (p) => `${ddmm(p.day)} · ${money(p.v)}`)) +
-      desplegable("msg", "Mensajes por día", nf0.format(msgs), unDia ? msg1() : grafico(dias.map((d) => ({ day: d.day, v: num(d.messages) })), "barras", "var(--serie2)", (v) => nf0.format(v), (p) => `${ddmm(p.day)} · ${nf0.format(p.v)} mensajes`));
+    return nombre + `<div class="kpis">${kpi("Inversión Meta", money(spend), cambio(spend, num(CLI.prev?.spend)))}${kpi("Mensajes", nf0.format(msgs), cambio(msgs, num(CLI.prev?.messages)))}${kpi("Costo por mensaje", msgs ? money(spend / msgs) : "—")}</div>` + bloqueGraf();
   }
   const fac = dias.reduce((s, d) => s + num(d.revenue), 0);
   const mer = spend > 0 ? fac / spend : null;
@@ -473,8 +563,7 @@ function vistaCliente() {
   const compradoresCargando = (CLI.tiendas || []).some((t) => t.conectada && !t.buyers_done);
   const avisoCompradores = compradoresCargando ? "Cargando historial: puede dar alto" : "";
   const cac = nuevos > 0 && spend > 0 ? spend / nuevos : null;
-  const puntos = (f) => dias.map((d) => ({ day: d.day, v: f(d) }));
-  const lista = conectada ? tablaProductos() + vistasPorMes() + tablaOrdenes() : "";
+  const lista = conectada ? tablaProductos() + tablaOrdenes() : "";
   const P = CLI.prev || {}, pFac = num(P.revenue), pInv = num(P.spend), pVen = num(P.orders), pUni = num(P.unidades), pNue = num(P.nuevos);
   const pMer = pInv > 0 ? pFac / pInv : null, unidades = num(CLI.unidades), pTic = pVen > 0 ? pFac / pVen : 0, pCac = pNue > 0 && pInv > 0 ? pInv / pNue : 0;
   const cortes = conectada
@@ -492,13 +581,9 @@ function vistaCliente() {
       ${kpi("Clientes nuevos", conectada ? nf0.format(nuevos) : "—", avisoCompradores || cambio(nuevos, pNue) || (conectada && nuevos + recs ? `${pct(nuevos, nuevos + recs)}% de las ventas` : ""))}
       ${kpi("Pendiente de pago", conectada ? money(num(CLI.pendiente?.total)) : "—", conectada ? `${nf0.format(num(CLI.pendiente?.ordenes))} ${num(CLI.pendiente?.ordenes) === 1 ? "orden" : "órdenes"}` : "")}
     </div>` +
-    desplegable("fac", "Facturación por día", resumen(money(fac)), unDia ? msg1() : grafico(puntos((d) => num(d.revenue)), "barras", "var(--serie)", corto, (p) => `${ddmm(p.day)} · ${money(p.v)}`)) +
-    desplegable("mer", "Retorno por día (MER)", merTxt(mer), unDia ? msg1() : grafico(puntos((d) => (num(d.spend) > 0 ? num(d.revenue) / num(d.spend) : null)), "linea", "var(--serie2)", (v) => merTxt(v), (p) => `${ddmm(p.day)} · MER ${merTxt(p.v)}`)) +
-    desplegable("inv", "Inversión por día", money(spend), unDia ? msg1() : grafico(puntos((d) => num(d.spend)), "barras", "var(--serie)", corto, (p) => `${ddmm(p.day)} · ${money(p.v)}`)) +
-    (conectada ? desplegable("cac", "CAC por día", cac == null ? "—" : money(cac), unDia ? msg1() : grafico(puntos((d) => (num(d.nuevos) > 0 ? num(d.spend) / num(d.nuevos) : null)), "linea", "var(--s4)", corto, (p) => `${ddmm(p.day)} · CAC ${p.v == null ? "—" : money(p.v)}`)) : "") +
+    bloqueGraf() +
     cortes + lista;
 }
-const msg1 = () => '<div class="sinchart">Elegí un rango de más de un día para ver la evolución.</div>';
 function fuentesCliente() {
   if (modoCliente) return "";
   const t = (CLI.tiendas || []).filter((x) => x.conectada);
@@ -559,19 +644,15 @@ function vistaAgencia() {
   const li = (c, val) => `<li data-id="${esc(c.id)}" tabindex="0"><span>${esc(c.name)}</span><b>${val}</b></li>`;
   const top = [...eco].sort((x, y) => y.f - x.f).slice(0, 8);
   const bajos = [...conInv].sort((x, y) => x.mer - y.mer).slice(0, 8);
-  const unDia = dias.length < 2;
   const tn = GEN.clientes.filter((c) => c.tn_stores.length);
   const conectados = tn.filter((c) => num(c.tiendas_vivo) >= c.tn_stores.length), faltan = tn.filter((c) => num(c.tiendas_vivo) < c.tn_stores.length);
   const link = GEN.app_id ? `https://www.tiendanube.com/apps/${encodeURIComponent(GEN.app_id)}/authorize` : null;
-  const puntos = (f) => dias.map((d) => ({ day: d.day, v: f(d) }));
   return `<div class="cab"><div><h1>Cómo viene la agencia</h1><p class="sub">${rangoTxt(rango())} · sin clientes de leads</p></div>${fuentes()}</div>
     <div class="kpis">
       ${kpi("Facturación de clientes", money(fac), dif(fac, pf))}${kpi("Inversión gestionada", money(inv), dif(inv, pi))}
       ${kpi("MER global", merTxt(mer), pm ? cambio(mer, pm) : "", merCls(mer))}${kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`)}
     </div>` +
-    desplegable("afac", "Facturación por día", money(fac), unDia ? msg1() : grafico(puntos((d) => num(d.revenue)), "barras", "var(--serie)", corto, (p) => `${ddmm(p.day)} · ${money(p.v)}`)) +
-    desplegable("amer", "Retorno por día (MER)", merTxt(mer), unDia ? msg1() : grafico(puntos((d) => (num(d.spend) > 0 ? num(d.revenue) / num(d.spend) : null)), "linea", "var(--serie2)", merTxt, (p) => `${ddmm(p.day)} · MER ${merTxt(p.v)}`)) +
-    desplegable("ainv", "Inversión por día", money(inv), unDia ? msg1() : grafico(puntos((d) => num(d.spend)), "barras", "var(--serie)", corto, (p) => `${ddmm(p.day)} · ${money(p.v)}`)) +
+    bloqueGraf() +
     `<section class="bloque"><h2>Clientes por MER</h2>
       <div class="semaforo" role="img" aria-label="Distribución de clientes por MER">${seg(g, "var(--good)")}${seg(a, "var(--mid)")}${seg(r, "var(--bad)")}</div>
       <div class="semaforoley"><span><b class="g">${g.length}</b> con 6 o más</span><span><b class="m">${a.length}</b> entre 3 y 6</span><span><b class="r">${r.length}</b> con menos de 3</span></div></section>
@@ -593,6 +674,8 @@ function pintar() {
   $("vista").innerHTML = E.v === "agencia" ? vistaAgencia() : E.v === "cliente" ? vistaCliente() : vistaGeneral();
   document.title = (E.v === "cliente" && CLI ? CLI.cliente.name : E.v === "agencia" ? "Agencia" : "General") + " · Elevation";
   activarGraficos();
+  // Mientras está en vivo, las fechas propias del gráfico se refrescan cada 2 minutos.
+  traerGraf(sondeo && grafRango()[1] >= hoyBA() && Date.now() - GRAF.cuando > 120000);
   if (foco === "q" && $("q")) { $("q").focus(); $("q").setSelectionRange(pos, pos); }
   window.scrollTo(0, y);
 }
@@ -619,7 +702,22 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") abrirMenu(
 
 const vista = $("vista");
 vista.addEventListener("input", (e) => { if (e.target.id === "q") { E.q = e.target.value; pintar(); } });
-vista.addEventListener("change", (e) => { if (e.target.id === "soloActivos") { E.soloActivos = e.target.checked; pintar(); } });
+vista.addEventListener("change", (e) => {
+  if (e.target.id === "soloActivos") { E.soloActivos = e.target.checked; pintar(); }
+  if (e.target.id === "grafP") {
+    E.graf.p = e.target.value; E.graf.g = null; GRAF.error = null;
+    pintarGraf(); traerGraf();
+  }
+  if (e.target.id === "grafD" || e.target.id === "grafH") {
+    let a = $("grafD").value, b = $("grafH").value;
+    if (!a || !b) return;
+    if (a > b) [a, b] = [b, a];
+    if ((new Date(b) - new Date(a)) / 864e5 > 400) { const av = $("aviso"); av.textContent = "El rango máximo es de 400 días."; av.className = "aviso err"; av.hidden = false; return; }
+    $("aviso").hidden = true;
+    E.graf.desde = a; E.graf.hasta = b; E.graf.g = null; GRAF.error = null;
+    pintarGraf(); traerGraf();
+  }
+});
 vista.addEventListener("click", (e) => {
   const th = e.target.closest("th button");
   if (th) {
@@ -628,6 +726,10 @@ vista.addEventListener("click", (e) => {
     return pintar();
   }
   if (e.target.id === "linkCliente") return linkCliente(false);
+  const gm = e.target.closest("[data-gm]");
+  if (gm) { E.graf.m = gm.dataset.gm; return pintarGraf(); }
+  const gg = e.target.closest("[data-gg]");
+  if (gg) { E.graf.g = gg.dataset.gg; return pintarGraf(); }
   if (e.target.id === "masOrdenes") { E.limite = Math.min(E.limite + 200, 500); return cargar({ silencio: true }); }
   const f = e.target.closest("tr.fila[data-id], .lista li[data-id]");
   if (f) irCliente(f.dataset.id);
@@ -635,7 +737,6 @@ vista.addEventListener("click", (e) => {
 vista.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches("tr.fila, .lista li")) { e.preventDefault(); irCliente(e.target.dataset.id); }
 });
-vista.addEventListener("toggle", (e) => { const id = e.target.dataset?.id; if (id) E.abiertos[id] = e.target.open; }, true);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && clave && incluyeHoy()) cargar({ silencio: true }); });
 let finResize = null;
 window.addEventListener("resize", () => { clearTimeout(finResize); finResize = setTimeout(() => { if (GEN || CLI) pintar(); }, 200); });
