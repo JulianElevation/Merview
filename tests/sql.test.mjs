@@ -34,6 +34,7 @@ await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal.sql")
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_compradores.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_fichas_portal.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal_vistas.sql"), "utf8"));
+await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal_rapido.sql"), "utf8"));
 console.log("ok  la migración corre completa");
 
 const hoy = (await q(`select (now() at time zone 'America/Argentina/Buenos_Aires')::date::text d`))[0].d;
