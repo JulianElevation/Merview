@@ -422,7 +422,6 @@ const ICONOS = {
   msg: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   cpm: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6M9.5 10h5"/>',
   uni: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
-  pen: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
   tie: '<path d="M3 9 4.5 4h15L21 9"/><path d="M4 9v11h16V9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/>',
   tab: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>',
 };
@@ -458,15 +457,17 @@ function elegirMetrica(id) {
   GRAF.anim = true;
   pintarGraf();
 }
-function tiles(valores, extra = "") {
+function tiles(valores, extras = []) {
   const sel = grafSel().map((m) => m.id);
-  const lista = grafMetricas().filter((m) => m.tipo !== "desglose").map((m) => {
+  const metricas = grafMetricas().filter((m) => m.tipo !== "desglose"), total = metricas.length + extras.length;
+  const lista = metricas.map((m) => {
     const [v, sub, cls] = valores[m.id] || ["—", ""], n = sel.indexOf(m.id) + 1;
     return `<button type="button" class="tile" data-gm="${m.id}" data-n="${n}" aria-pressed="${n > 0}">
       <span class="tile-t">${icono(m.id)}<span>${esc(m.t)}</span><i class="tile-pto" aria-hidden="true"></i></span>
       <b class="${cls || ""}">${esc(v)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</button>`;
   }).join("");
-  return `<div class="tiles">${lista}${extra}</div>`;
+  // Hasta 4 por fila: con 8 quedan dos filas parejas, sin tarjetas sueltas.
+  return `<div class="tiles" style="--cols:${Math.min(4, total)}">${lista}${extras.join("")}</div>`;
 }
 function sincronizarTiles() {
   const sel = grafSel().map((m) => m.id);
@@ -714,12 +715,10 @@ function vistaCliente() {
       ven: [hayOrdenes ? nf0.format(ventas) : "—", hayOrdenes ? cambio(ventas, pVen) : ""],
       tic: [hayOrdenes && ventas ? money(fac / ventas) : "—", hayOrdenes && ventas ? cambio(fac / ventas, pTic) : ""],
       cac: [cac == null ? "—" : money(cac), compradoresCargando ? "Cargando historial: puede dar bajo" : (cac == null ? "" : cambio(cac, pCac)) || "Inversión ÷ clientes nuevos"],
-    })}
-    ${conectada ? `<div class="kpis chico">
-      ${kpi("Clientes nuevos", nf0.format(nuevos), avisoCompradores || cambio(nuevos, pNue) || (nuevos + recs ? `${pct(nuevos, nuevos + recs)}% de las ventas` : ""), "", "cli")}
-      ${kpi("Productos vendidos", nf0.format(unidades), cambio(unidades, pUni), "", "uni")}
-      ${kpi("Pendiente de pago", money(num(CLI.pendiente?.total)), `${nf0.format(num(CLI.pendiente?.ordenes))} ${num(CLI.pendiente?.ordenes) === 1 ? "orden" : "órdenes"}`, "", "pen")}
-    </div>` : ""}` +
+    }, conectada ? [
+      kpi("Clientes nuevos", nf0.format(nuevos), avisoCompradores || cambio(nuevos, pNue) || (nuevos + recs ? `${pct(nuevos, nuevos + recs)}% de las ventas` : ""), "", "cli"),
+      kpi("Productos vendidos", nf0.format(unidades), cambio(unidades, pUni), "", "uni"),
+    ] : [])}` +
     bloqueGraf() +
     cortes + lista;
 }
@@ -793,7 +792,7 @@ function vistaAgencia() {
       fac: [money(fac), dif(fac, pf)],
       inv: [money(inv), dif(inv, pi)],
       mer: [merTxt(mer), pm ? cambio(mer, pm) : "", merCls(mer)],
-    }, kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`, "", "tie"))}` +
+    }, [kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`, "", "tie")])}` +
     bloqueGraf() +
     `<section class="bloque"><h2>Clientes por MER</h2>
       <div class="semaforo" role="img" aria-label="Distribución de clientes por MER">${seg(g, "var(--good)")}${seg(a, "var(--mid)")}${seg(r, "var(--bad)")}</div>
