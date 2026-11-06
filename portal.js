@@ -117,7 +117,7 @@ function bloquear(msg) {
   if (msg) { $("loginErr").textContent = msg; $("loginErr").hidden = false; }
   clearInterval(timer);
 }
-async function rpc(fn, args) {
+async function rpc(fn, args, reintento = true) {
   const r = await fetch(`${CFG.supabaseUrl}/rest/v1/rpc/${fn}`, {
     method: "POST",
     headers: { apikey: CFG.supabaseKey, "Content-Type": "application/json" },
@@ -125,6 +125,8 @@ async function rpc(fn, args) {
   });
   const data = await r.json().catch(() => null);
   if (!r.ok) {
+    // La primera consulta en frío puede pasar el límite de 3 s de la base; la segunda ya entra.
+    if (reintento && /statement timeout/.test(data?.message || "")) return rpc(fn, args, false);
     const e = new Error(data?.message || `HTTP ${r.status}`);
     e.clave = /clave_invalida/.test(data?.message || "");
     throw e;
