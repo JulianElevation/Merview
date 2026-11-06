@@ -12,6 +12,8 @@ drop function if exists public.meta_upsert(jsonb);
 drop function if exists public.tn_upsert_buyers(jsonb);
 drop function if exists public.tn_upsert_orders(jsonb);
 drop function if exists public.tn_cuenta_como_venta(text,text);
+delete from public.clients where id in ('citypet','libralatina','cezze','auremworld');
+alter table public.clients drop column if exists tn_stores_portal;
 drop table if exists public.meta_state;
 drop table if exists public.meta_live;
 drop table if exists public.tn_buyers;

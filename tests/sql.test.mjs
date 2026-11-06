@@ -32,6 +32,7 @@ await db.exec(`
 `);
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_compradores.sql"), "utf8"));
+await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_fichas_portal.sql"), "utf8"));
 console.log("ok  la migración corre completa");
 
 const hoy = (await q(`select (now() at time zone 'America/Argentina/Buenos_Aires')::date::text d`))[0].d;
@@ -111,6 +112,21 @@ assert.equal(desp.ordenes.find((o) => o.number === 7).tipo, "Recurrente");
 assert.equal((await q(`select first_paid_at::date::text f from public.tn_buyers where buyer_hash='pp'`))[0].f, "2020-01-01", "se queda con la compra más vieja");
 assert.equal(desp.tiendas[0].buyers_done, false);
 console.log("ok  compradores de todo el historial");
+
+// Ficha solo del portal: se ve en el portal, pero la lista que usa la carga de MER View sigue vacía.
+await db.exec(`insert into public.tn_installs (store_id, access_token, coverage_from) values ('1725892','tok','${dia(2)}')`);
+await cargar([orden(50, hoy, 4321, { store_id: "1725892", buyer_hash: "lib" })]);
+const gen2 = (await q(`select public.portal_general('clave',$1::date,$1::date) r`, [hoy]))[0].r;
+const libra = gen2.clientes.find((c) => c.id === "libralatina");
+assert.equal(Number(libra.revenue), 4321);
+assert.deepEqual(libra.tn_stores, ["1725892"]);
+assert.equal(Number(libra.tiendas_vivo), 1);
+const fichaLibra = (await q(`select public.portal_cliente('clave','libralatina',$1::date,$1::date) r`, [hoy]))[0].r;
+assert.equal(fichaLibra.ordenes[0].number, 50);
+assert.deepEqual(fichaLibra.cliente.tn_stores, ["1725892"]);
+assert.deepEqual((await q(`select tn_stores from public.clients where id='libralatina'`))[0].tn_stores, []);
+assert.equal((await q(`select kind from public.clients where id='cezze'`))[0].kind, "sin_tienda");
+console.log("ok  fichas solo del portal, sin tocar la carga de MER View");
 
 // Seguridad.
 await assert.rejects(q(`select public.portal_general('mala',now()::date,now()::date)`), /clave_invalida/);

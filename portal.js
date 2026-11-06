@@ -356,7 +356,7 @@ function vistaCliente() {
   const conectada = (CLI.tiendas || []).some((t) => t.conectada);
   const compradoresCargando = (CLI.tiendas || []).some((t) => t.conectada && !t.buyers_done);
   const avisoCompradores = compradoresCargando ? "Cargando historial: puede dar alto" : "";
-  const cac = nuevos > 0 ? spend / nuevos : null;
+  const cac = nuevos > 0 && spend > 0 ? spend / nuevos : null;
   const puntos = (f) => dias.map((d) => ({ day: d.day, v: f(d) }));
   const lista = conectada ? tablaOrdenes() : "";
   const cortes = conectada
