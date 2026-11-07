@@ -428,8 +428,10 @@ async function hojaASlide(hoja) {
     if (tag === "img") {
       if (!el.naturalWidth) return;
       // Misma cuenta que object-fit: contain, para que la pieza no se deforme.
-      const esc = Math.min(caja.width / el.naturalWidth, caja.height / el.naturalHeight), w = el.naturalWidth * esc, h = el.naturalHeight * esc;
-      const pos = { left: caja.left + (caja.width - w) / 2, top: caja.top + (caja.height - h) / 2, width: w, height: h };
+      // Se mide contra el recuadro de la pieza: la imagen sola puede medir más que lo visible.
+      const marco = el.parentElement.classList.contains("i-img") ? el.parentElement.getBoundingClientRect() : caja;
+      const esc = Math.min(marco.width / el.naturalWidth, marco.height / el.naturalHeight), w = el.naturalWidth * esc, h = el.naturalHeight * esc;
+      const pos = { left: marco.left + (marco.width - w) / 2, top: marco.top + (marco.height - h) / 2, width: w, height: h };
       let src = el.src;
       if (new URL(src, location.href).origin === location.origin) {
         const l = document.createElement("canvas"); l.width = el.naturalWidth; l.height = el.naturalHeight;
