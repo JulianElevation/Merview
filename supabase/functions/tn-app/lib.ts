@@ -340,8 +340,10 @@ async function opcionesDePieza(c: Record<string, any>, pedir: (nodo: string, p: 
   if (!out.length && c.effective_object_story_id) await intento(async () => { sumar((await pedir(c.effective_object_story_id, { fields: "full_picture" })).full_picture); });
   if (!out.length && c.effective_instagram_media_id) {
     await intento(async () => {
-      const m = await pedir(c.effective_instagram_media_id, { fields: "media_url,thumbnail_url" });
-      sumar(m.thumbnail_url); sumar(m.media_url);
+      const m = await pedir(c.effective_instagram_media_id, { fields: "media_url,thumbnail_url,media_type" });
+      sumar(m.thumbnail_url);
+      // En un video, media_url es el mp4: no sirve como imagen.
+      if (m.media_type !== "VIDEO") sumar(m.media_url);
     });
   }
   // En catálogo, la miniatura es el ícono genérico de Meta: mejor no mostrarla.
@@ -349,9 +351,17 @@ async function opcionesDePieza(c: Record<string, any>, pedir: (nodo: string, p: 
   return out.slice(0, 10);
 }
 
+// Dirección de la vista previa que arma Meta para un anuncio. Viene adentro de un iframe en HTML.
+export function urlDeVistaPrevia(html: unknown) {
+  const m = typeof html === "string" ? html.match(/src="([^"]+)"/) : null;
+  if (!m) return null;
+  const url = m[1].replace(/&amp;/g, "&");
+  return /^https:\/\/([a-z0-9-]+\.)*facebook\.com\//.test(url) ? url : null;
+}
+
 // Si falla la imagen, el anuncio se muestra igual, sin pieza.
 async function imagenesAnuncios(ids: string[], token: string, f: Fetcher) {
-  const out: Record<string, string[]> = {};
+  const out: Record<string, { imagenes: string[]; vista: string | null }> = {};
   if (!ids.length) return out;
   const pedir = async (nodo: string, params: Record<string, string>) => {
     const r = await f(`https://graph.facebook.com/${META_VERSION}/${nodo}?${new URLSearchParams(params)}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -364,7 +374,14 @@ async function imagenesAnuncios(ids: string[], token: string, f: Fetcher) {
     try {
       const pieza = (await pedir(id, { fields: "creative{id}" })).creative?.id;
       if (!pieza) return;
-      out[id] = await opcionesDePieza(await pedir(pieza, { fields: CAMPOS_PIEZA }), pedir);
+      const imagenes = await opcionesDePieza(await pedir(pieza, { fields: CAMPOS_PIEZA }), pedir);
+      let vista: string | null = null;
+      // Sin ninguna imagen (catálogo, en general), la vista previa de Meta muestra el anuncio real.
+      if (!imagenes.length) {
+        const p = await pedir(`${id}/previews`, { ad_format: "INSTAGRAM_STANDARD" });
+        vista = urlDeVistaPrevia(p.data?.[0]?.body);
+      }
+      out[id] = { imagenes, vista };
     } catch (e) {
       console.error("imagen de anuncio:", id, String((e as Error)?.message ?? e).slice(0, 200));
     }
@@ -385,7 +402,7 @@ export async function analisisMeta(accountId: string, token: string, desde: stri
     periodo: sumarResumen(cuenta.map((x) => resumirMeta(x, usdArs))),
     compara: compara ? sumarResumen(compara.map((x) => resumirMeta(x, usdArs))) : null,
     campanas: campanas.map((x) => ({ id: String(x.campaign_id), nombre: x.campaign_name ?? String(x.campaign_id), ...resumirMeta(x, usdArs) })),
-    anuncios: top.map((x) => ({ ...x, imagenes: imagenes[x.id] ?? [] })),
+    anuncios: top.map((x) => ({ ...x, imagenes: imagenes[x.id]?.imagenes ?? [], vista: imagenes[x.id]?.vista ?? null })),
   };
 }
 

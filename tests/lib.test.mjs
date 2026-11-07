@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import {
-  agruparAnuncios, analisisMeta, BUYER_FIELDS, campanasMeta, clienteTN, resumirMeta, filasCompradores, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana, ventanaAtras,
+  agruparAnuncios, analisisMeta, urlDeVistaPrevia, BUYER_FIELDS, campanasMeta, clienteTN, resumirMeta, filasCompradores, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana, ventanaAtras,
 } from "../supabase/functions/tn-app/lib.ts";
 
 const res = (status, body, headers = {}) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers });
@@ -257,6 +257,8 @@ test("catálogo: usa fotos de productos y nunca el ícono genérico", async () =
   assert.deepEqual(con.anuncios[0].imagenes, ["https://prod1", "https://prod2"]);
   const sin = await analisisCon({ p1: { product_set_id: "s1", thumbnail_url: "https://generico" } });
   assert.deepEqual(sin.anuncios[0].imagenes, [], "sin permiso al catálogo queda sin imagen");
+  const vista = await analisisCon({ p1: { product_set_id: "s1" }, "a1/previews": { data: [{ body: '<iframe src="https://www.facebook.com/ads/api/preview_iframe.php?d=1&amp;t=2" width="320"></iframe>' }] } });
+  assert.equal(vista.anuncios[0].vista, "https://www.facebook.com/ads/api/preview_iframe.php?d=1&t=2", "usa la vista previa de Meta");
 });
 
 test("publicación: si no hay otra fuente, usa la foto del post y sin eso la miniatura", async () => {
@@ -264,4 +266,14 @@ test("publicación: si no hay otra fuente, usa la foto del post y sin eso la min
   assert.deepEqual(post.anuncios[0].imagenes, ["https://post"]);
   const mini = await analisisCon({ p1: { thumbnail_url: "https://mini" } });
   assert.deepEqual(mini.anuncios[0].imagenes, ["https://mini"]);
+});
+
+test("un video de Instagram no ofrece el mp4 como imagen", async () => {
+  const r = await analisisCon({ p1: { effective_instagram_media_id: "ig1" }, ig1: { thumbnail_url: "https://foto", media_url: "https://video.mp4", media_type: "VIDEO" } });
+  assert.deepEqual(r.anuncios[0].imagenes, ["https://foto"]);
+});
+
+test("la vista previa solo acepta direcciones de Facebook", () => {
+  assert.equal(urlDeVistaPrevia('<iframe src="https://malo.com/x"></iframe>'), null);
+  assert.equal(urlDeVistaPrevia(undefined), null);
 });
