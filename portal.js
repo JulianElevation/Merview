@@ -183,7 +183,7 @@ async function guardarMovimiento(accion) {
       const id = v("agCliente");
       if (!id) { E.agErr = "Elegí qué cliente se da de baja."; return pintar(); }
       const nombre = $("agCliente").selectedOptions[0].textContent;
-      if (!confirm(`¿Dar de baja a ${nombre}? Sale de General, MER View y las cargas. Se puede volver a activar.`)) return;
+      if (!confirm(`¿Dar de baja a ${nombre}? Sale de Clientes, General, MER View y las cargas. Se puede volver a activar.`)) return;
       await rpc("portal_baja_cliente", { p_client: id, p_fecha: fecha, p_motivo: v("agMotivo") });
       hecho = `${nombre} quedó dado de baja.`;
     } else if (accion === "agReactivar") {
@@ -707,7 +707,7 @@ function vistaGeneral() {
         const s = num(c.spend), m = num(c.messages);
         return `<tr class="fila" tabindex="0" data-id="${esc(c.id)}"><td class="nom"><b>${esc(c.name)}</b></td><td>${money(s)}</td><td>${nf0.format(m)}</td><td>${m ? money(s / m) : '<span class="na">—</span>'}</td></tr>`;
       }).join("")}</tbody></table></div></section>` : "";
-  return `<div class="cab"><div><h1>Tablero general</h1><p class="sub">${rangoTxt(rango())} · ${lista.length} clientes</p></div>${fuentes()}</div>
+  return `<div class="cab"><div><h1>Clientes</h1><p class="sub">${rangoTxt(rango())} · ${lista.length} clientes</p></div>${fuentes()}</div>
     <div class="kpis">
       ${kpi("Inversión Meta", money(inv), term ? "" : cambio(inv, num(GEN.prev?.spend)), "", "inv")}${kpi("Facturación tiendas", money(fac), term ? "" : cambio(fac, num(GEN.prev?.revenue)), "", "fac")}
       ${kpi("MER global", merTxt(mer), (!term && num(GEN.prev?.spend) > 0 && cambio(mer, num(GEN.prev?.revenue) / num(GEN.prev?.spend))) || "Solo clientes con tienda", merCls(mer), "mer")}${kpi("Clientes con ventas", nf0.format(conT.filter((c) => c.fac > 0).length), `de ${conT.length} con tienda`, "", "tie")}
@@ -880,7 +880,7 @@ function bloqueMovimientos() {
   const activos = [...GEN.clientes].sort((a, b) => a.name.localeCompare(b.name, "es"));
   const forms = {
     baja: `<label class="ancho">Cliente<select id="agCliente"><option value="">Elegí un cliente</option>${activos.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("")}</select></label>${fechaInp}${motivo("Motivo")}
-      <p class="sub ancho">Sale de General, MER View y las cargas. Conserva su historial y se puede volver a activar.</p><div class="ancho"><button type="button" class="btn peligro" id="agBaja">Dar de baja</button></div>`,
+      <p class="sub ancho">Sale de Clientes, General, MER View y las cargas. Conserva su historial y se puede volver a activar.</p><div class="ancho"><button type="button" class="btn peligro" id="agBaja">Dar de baja</button></div>`,
     alta: `<label class="ancho">Nombre del cliente<input type="text" id="agNombre" maxlength="80" autocomplete="off"></label>
       <label>Tipo<select id="agTipo"><option value="">Tienda online</option><option value="leads">Leads</option></select></label>
       <label>Tienda conectada<select id="agTienda"><option value="">${AG.tiendas_libres.length ? "Todavía ninguna" : "No hay tiendas sin asignar"}</option>${AG.tiendas_libres.map((t) => `<option value="${esc(t.id)}">${esc(t.name || t.id)}</option>`).join("")}</select></label>
@@ -904,7 +904,7 @@ function vistaAgencia() {
   const conInv = eco.filter((c) => c.mer != null);
   const top = [...eco].filter((c) => c.f > 0).sort((x, y) => y.f - x.f).slice(0, 10), totTop = eco.reduce((s, c) => s + c.f, 0);
   const link = GEN.app_id ? `https://www.tiendanube.com/apps/${encodeURIComponent(GEN.app_id)}/authorize` : null;
-  return `<div class="cab"><div><h1>Agencia</h1><p class="sub">${rangoTxt(rango())} · sin clientes de leads</p></div>${fuentes()}</div>
+  return `<div class="cab"><div><h1>General</h1><p class="sub">${rangoTxt(rango())} · sin clientes de leads</p></div>${fuentes()}</div>
     <div class="kpis">
       ${kpi("Facturación de clientes", money(fac), cambio(fac, pf), "", "fac")}${kpi("Inversión gestionada", money(inv), cambio(inv, pi), "", "inv")}
       ${kpi("MER global", merTxt(mer), pm ? cambio(mer, pm) : "", merCls(mer), "mer")}${kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`, "", "tie")}
@@ -925,7 +925,7 @@ function pintar() {
   pintarControles();
   medirGraficos();
   $("vista").innerHTML = E.v === "agencia" ? vistaAgencia() : E.v === "cliente" ? vistaCliente() : vistaGeneral();
-  document.title = (E.v === "cliente" && CLI ? CLI.cliente.name : E.v === "agencia" ? "Agencia" : "General") + " · Elevation";
+  document.title = (E.v === "cliente" && CLI ? CLI.cliente.name : E.v === "agencia" ? "General" : "Clientes") + " · Elevation";
   activarGraficos();
   // Mientras está en vivo, las fechas propias del gráfico se refrescan cada 2 minutos.
   traerGraf(sondeo && grafRango()[1] >= hoyBA() && Date.now() - GRAF.cuando > 120000);
