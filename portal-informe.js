@@ -390,6 +390,112 @@ function hojaCorte(ctx, lista, titulo, cab, nombre) {
   return { titulo, fuente: F_TIENDA, cuerpo: corte(lista, nombre, cab) };
 }
 
+/* ---------- Google Slides ---------- */
+// Dirección del script de Google (docs/slides/Codigo.gs), en config.js. Sin ella, el botón no aparece.
+const SLIDES_URL = CFG.slidesUrl || "";
+const aHex = (css) => {
+  const m = String(css).match(/[\d.]+/g);
+  if (!m) return null;
+  const a = m.length > 3 ? Number(m[3]) : 1;
+  if (a === 0) return null;
+  // Con transparencia, se mezcla contra el blanco de la hoja.
+  return "#" + [0, 1, 2].map((i) => Math.round(Number(m[i]) * a + 255 * (1 - a)).toString(16).padStart(2, "0")).join("");
+};
+async function svgAPng(svg, w, h) {
+  const c = svg.cloneNode(true);
+  c.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  c.setAttribute("width", w); c.setAttribute("height", h);
+  c.setAttribute("font-family", "Arial, sans-serif");
+  const img = new Image();
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(c));
+  await img.decode();
+  const lienzo = document.createElement("canvas");
+  lienzo.width = w * 2; lienzo.height = h * 2;
+  lienzo.getContext("2d").drawImage(img, 0, 0, w * 2, h * 2);
+  return lienzo.toDataURL("image/png");
+}
+// Traduce una hoja ya dibujada a posiciones en puntos: lo que se ve es lo que sale en Slides.
+async function hojaASlide(hoja) {
+  const base = hoja.getBoundingClientRect(), k = 842 / base.width, items = [];
+  const R = (r) => ({ x: (r.left - base.left) * k, y: (r.top - base.top) * k, w: r.width * k, h: r.height * k });
+  const tipografia = (cs) => ({ size: Math.round(parseFloat(cs.fontSize) * k * 10) / 10, bold: parseInt(cs.fontWeight, 10) >= 600, color: aHex(cs.color) || "#221E33", align: cs.textAlign });
+  const visitar = async (el) => {
+    const cs = getComputedStyle(el);
+    if (el.classList.contains("inf-toma") || cs.display === "none") return;
+    const caja = el.getBoundingClientRect();
+    const tag = el.tagName.toLowerCase();
+    if (tag === "svg") { items.push({ t: "img", ...R(caja), src: await svgAPng(el, Math.round(caja.width), Math.round(caja.height)) }); return; }
+    if (tag === "img") {
+      if (!el.naturalWidth) return;
+      // Misma cuenta que object-fit: contain, para que la pieza no se deforme.
+      const esc = Math.min(caja.width / el.naturalWidth, caja.height / el.naturalHeight), w = el.naturalWidth * esc, h = el.naturalHeight * esc;
+      const pos = { left: caja.left + (caja.width - w) / 2, top: caja.top + (caja.height - h) / 2, width: w, height: h };
+      let src = el.src;
+      if (new URL(src, location.href).origin === location.origin) {
+        const l = document.createElement("canvas"); l.width = el.naturalWidth; l.height = el.naturalHeight;
+        const g = l.getContext("2d"); g.filter = cs.filter === "none" ? "none" : cs.filter; g.drawImage(el, 0, 0);
+        src = l.toDataURL("image/png");
+      }
+      items.push({ t: "img", ...R(pos), src });
+      return;
+    }
+    if (tag === "table") {
+      const filas = [...el.rows].map((tr) => {
+        const fondo = tr.closest("thead") ? "#F6F4FA" : null;
+        return { alto: tr.getBoundingClientRect().height * k, fondo, celdas: [...tr.cells].map((td) => {
+          const c = getComputedStyle(td), fuerte = td.querySelector("b, small");
+          const cf = fuerte ? getComputedStyle(fuerte) : c;
+          return { txt: td.innerText.trim(), ...tipografia(cf), align: c.textAlign };
+        }) };
+      });
+      items.push({ t: "tabla", ...R(caja), filas, anchos: [...el.rows[0].cells].map((td) => td.getBoundingClientRect().width * k) });
+      // Las muestras de color y las barritas de adentro van como formas encima.
+      el.querySelectorAll("i").forEach((i) => { const f = aHex(getComputedStyle(i).backgroundColor); if (f) items.push({ t: "forma", ...R(i.getBoundingClientRect()), fill: f, tipo: "RECTANGLE" }); });
+      return;
+    }
+    const fondo = aHex(cs.backgroundColor), bordes = ["Top", "Right", "Bottom", "Left"].map((s) => parseFloat(cs[`border${s}Width`]) > 0);
+    const conPieza = el.classList.contains("i-img") && el.querySelector("img, svg");
+    if (el !== hoja && !conPieza) {
+      const rad = parseFloat(cs.borderTopLeftRadius) || 0, total = bordes.every(Boolean);
+      if (fondo || total) items.push({ t: "forma", ...R(caja), fill: fondo, line: total ? aHex(cs.borderTopColor) : null, tipo: rad >= Math.min(caja.width, caja.height) / 2 ? "ELLIPSE" : rad > 0 ? "ROUND_RECTANGLE" : "RECTANGLE" });
+      if (!total) {
+        const b = R(caja);
+        if (bordes[0]) items.push({ t: "linea", x: b.x, y: b.y, w: b.w, h: 0.75, color: aHex(cs.borderTopColor) });
+        if (bordes[2]) items.push({ t: "linea", x: b.x, y: b.y + b.h, w: b.w, h: 0.75, color: aHex(cs.borderBottomColor) });
+      }
+    }
+    for (const n of el.childNodes) {
+      if (n.nodeType === Node.TEXT_NODE && n.textContent.trim()) {
+        const r = document.createRange(); r.selectNodeContents(n);
+        items.push({ t: "texto", ...R(r.getBoundingClientRect()), txt: n.textContent.trim(), ...tipografia(cs) });
+      } else if (n.nodeType === Node.ELEMENT_NODE) await visitar(n);
+    }
+  };
+  await visitar(hoja);
+  return { items };
+}
+async function abrirEnSlides(boton) {
+  // La pestaña se abre ya: si se abre después de esperar, el navegador la bloquea.
+  const pestana = window.open("", "_blank");
+  if (pestana) pestana.document.write("<title>Armando…</title><p style='font:16px sans-serif;padding:24px'>Armando la presentación. Tarda menos de un minuto.</p>");
+  boton.disabled = true; const antes = boton.textContent; boton.textContent = "Armando…";
+  try {
+    const hojas = [];
+    for (const h of document.querySelectorAll("#infPapel .hoja")) hojas.push(await hojaASlide(h));
+    // Sin encabezados especiales: el script de Google responde sin pedir permiso previo al navegador.
+    const r = await fetch(SLIDES_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ key: clave, titulo: $("informe").dataset.archivo, hojas }) });
+    const j = await r.json();
+    if (!j.url) throw new Error(j.error || "sin respuesta");
+    if (pestana) pestana.location = j.url; else location.href = j.url;
+  } catch (e) {
+    console.error("Google Slides", e.message);
+    if (pestana) pestana.close();
+    alert("No se pudo armar la presentación. Probá de nuevo o descargá el PDF.");
+  } finally {
+    boton.disabled = false; boton.textContent = antes;
+  }
+}
+
 /* ---------- Documento ---------- */
 function mostrarInforme(op, d) {
   const { r, rc, meta, conMeta, rh, iniMes, finMes } = d, cli = r.cliente;
@@ -419,7 +525,7 @@ function mostrarInforme(op, d) {
   const paginas = hojas.map((h, i) => `<section class="hoja"><header><div><h2>${esc(h.titulo)}</h2><p>${sub}${op.comp ? ` · comparado con ${esc(ctx.etq)}` : ""}</p></div><img src="logo-elevation.png" alt="Elevation"></header><div class="hoja-c">${h.cuerpo}</div><footer><span>Fuente: ${esc(h.fuente)}</span><span>${i + 2}</span></footer></section>`).join("");
   const portada = `<section class="hoja portada"><img src="logo-elevation.png" alt="Elevation"><div><p>Análisis de resultados</p><h1>${esc(cli.name)}</h1><h2>${esc(tituloPer)}</h2></div><footer><span>Elevation Media</span><span>Generado el ${esc(conAnio(hoyBA()))}</span></footer></section>`;
   const nombreArchivo = `${cli.name} - Analisis de Resultados ${tituloPer}`.replace(/[\\/:*?"<>|]/g, "-");
-  $("informe").innerHTML = `<div class="inf-barra"><button type="button" class="btn" id="infVolver">Volver al portal</button><span>${hojas.length + 1} hojas</span><button type="button" class="btn" id="infEditar">Cambiar temas</button><button type="button" class="btn pri" id="infPdf">Descargar PDF</button></div>
+  $("informe").innerHTML = `<div class="inf-barra"><button type="button" class="btn" id="infVolver">Volver al portal</button><span>${hojas.length + 1} hojas</span><button type="button" class="btn" id="infEditar">Cambiar temas</button>${SLIDES_URL ? '<button type="button" class="btn" id="infSlides">Abrir en Google Slides</button>' : ""}<button type="button" class="btn pri" id="infPdf">Descargar PDF</button></div>
     ${avisos.length ? `<div class="inf-avisos"><b>Solo para el equipo, no sale en el PDF:</b><ul>${avisos.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></div>` : ""}
     <div class="inf-papel" id="infPapel">${portada}${paginas}</div>`;
   $("informe").dataset.archivo = nombreArchivo;
@@ -441,6 +547,7 @@ $("informe").addEventListener("click", (e) => {
   }
   if (e.target.id === "infVolver") return cerrarInforme();
   if (e.target.id === "infEditar") { cerrarInforme(); return abrirFormInforme(); }
+  if (e.target.id === "infSlides") return abrirEnSlides(e.target);
   if (e.target.id === "infPdf") {
     const antes = document.title;
     document.title = $("informe").dataset.archivo;

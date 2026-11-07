@@ -75,6 +75,7 @@ function agencia() {
 }
 
 const MARCADOS = new Set(["b"]);
+let ultimoSlides = null;
 const CAMPANAS = [
   { id: "1", nombre: "Ventas | Catálogo | CBO", objetivo: "OUTCOME_SALES", factor: 0.32, msgs: 46, b2b: false, parece_mensajes: false },
   { id: "2", nombre: "Interacción Manual IG (B2B)", objetivo: "OUTCOME_ENGAGEMENT", factor: 0.33, msgs: 2300, b2b: true, parece_mensajes: false },
@@ -178,9 +179,16 @@ createServer(async (req, res) => {
       anuncios: [anuncio(1, 142, 720000, "#6D4FA8"), anuncio(2, 98, 510000, "#3F7F73"), anuncio(3, 77, 480000, "#A8643A"), anuncio(4, 51, 310000, "#7A5A9C"), anuncio(5, 34, 205000, "#4C6FA8")],
     }));
   }
+  if (url.pathname === "/slides-prueba") {
+    res.setHeader("Content-Type", "application/json");
+    if (req.method === "GET") return res.end(ultimoSlides || "{}");
+    let cuerpo = ""; for await (const c of req) cuerpo += c;
+    ultimoSlides = cuerpo;
+    return res.end(JSON.stringify({ url: `${url.origin}/portal.html?slides=ok` }));
+  }
   if (url.pathname === "/config.js") {
     res.setHeader("Content-Type", "text/javascript");
-    return res.end(`window.MERVIEW_CONFIG={supabaseUrl:location.origin,supabaseKey:"x"};`);
+    return res.end(`window.MERVIEW_CONFIG={supabaseUrl:location.origin,supabaseKey:"x",slidesUrl:location.origin+"/slides-prueba"};`);
   }
   try {
     const archivo = url.pathname === "/" ? "portal.html" : url.pathname.slice(1);
