@@ -207,12 +207,12 @@ function torta(filas) {
     } else {
       // Porción chica: el dato afuera, y si choca con el anterior, un poco más lejos.
       let r = 103, [x, y] = pos(r);
-      while (previo && Math.hypot(x - previo[0], y - previo[1]) < 13 && r < 130) { r += 7; [x, y] = pos(r); }
+      while (previo && (Math.abs(y - previo[1]) < 13 && Math.abs(x - previo[0]) < 30) && r < 150) { r += 7; [x, y] = pos(r); }
       previo = [x, y];
       textos += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9.5" font-weight="600" fill="#3B3650">${etq}</text>`;
     }
   });
-  return `<svg class="i-torta" viewBox="-24 -24 248 248" role="img">${arcos}${textos}</svg>`;
+  return `<svg class="i-torta" viewBox="-30 -30 260 260" role="img">${arcos}${textos}</svg>`;
 }
 function corte(lista, nombre, cab) {
   const ord = [...lista].map((x) => ({ nombre: nombre(x.k), ventas: num(x.ventas), total: num(x.total) })).sort((a, b) => b.total - a.total);
@@ -382,7 +382,7 @@ function hojaCampanas(ctx) {
   if (!lista.length) return null;
   const total = lista.reduce((s, x) => s + x.spend, 0), top = lista.slice(0, 13);
   const extra = lista.length > top.length ? ` Las ${top.length} con más inversión de ${lista.length}.` : "";
-  return { titulo: "Campañas", fuente: F_META + extra, cuerpo: `<table class="i-tab"><thead><tr><th>Campaña</th><th>Inversión</th><th>% inv.</th><th>Compras</th><th>Costo x compra</th><th>Facturación</th><th>ROAS</th></tr></thead><tbody>
+  return { titulo: "Campañas", fuente: F_META + extra, cuerpo: `<table class="i-tab i-campanas"><thead><tr><th>Campaña</th><th>Inversión</th><th>% inv.</th><th>Compras</th><th>Costo x compra</th><th>Facturación</th><th>ROAS</th></tr></thead><tbody>
     ${top.map((x) => `<tr><td class="i-nom">${esc(x.nombre)}</td><td>${money(x.spend)}</td><td>${tasa(x.spend, total)}</td><td>${nf0.format(x.compras)}</td><td>${x.compras ? money(x.spend / x.compras) : "—"}</td><td>${money(x.valor)}</td><td>${merTxt(x.valor / x.spend)}</td></tr>`).join("")}</tbody></table>` };
 }
 function hojaTop(ctx) {
