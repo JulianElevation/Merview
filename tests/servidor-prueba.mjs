@@ -78,7 +78,7 @@ const MARCADOS = new Set(["b"]);
 const CAMPANAS = [
   { id: "1", nombre: "Ventas | Catálogo | CBO", objetivo: "OUTCOME_SALES", factor: 0.32, msgs: 46, b2b: false, parece_mensajes: false },
   { id: "2", nombre: "Interacción Manual IG (B2B)", objetivo: "OUTCOME_ENGAGEMENT", factor: 0.33, msgs: 2300, b2b: true, parece_mensajes: false },
-  { id: "3", nombre: "Mayoristas WhatsApp (MSJ)", objetivo: "OUTCOME_ENGAGEMENT", factor: 0.2, msgs: 1400, b2b: true, parece_mensajes: false },
+  { id: "3", nombre: "Mayoristas WhatsApp (B2B)", objetivo: "OUTCOME_ENGAGEMENT", factor: 0.2, msgs: 1400, b2b: true, parece_mensajes: false },
   { id: "4", nombre: "Interacción Manual IG sin marcar", objetivo: "OUTCOME_SALES", factor: 0.15, msgs: 1066, b2b: false, parece_mensajes: true },
 ];
 function cliente({ p_client: id, p_since: a, p_until: b, p_limit: lim }) {

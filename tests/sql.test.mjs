@@ -39,6 +39,7 @@ await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_link_cliente
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_agencia.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_agencia_12h.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_b2b.sql"), "utf8"));
+await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_solo_b2b.sql"), "utf8"));
 console.log("ok  la migración corre completa");
 
 const hoy = (await q(`select (now() at time zone 'America/Argentina/Buenos_Aires')::date::text d`))[0].d;
@@ -316,7 +317,9 @@ assert.equal(camp.c1.parece_mensajes, false, "venta común no alerta");
 assert.equal(camp.c3.parece_mensajes, true, "objetivo de ventas pero muchas conversaciones");
 // Cambiar el nombre corrige también los días anteriores.
 await q(`select public.meta_campanas_upsert($1::jsonb,'[]'::jsonb)`, [JSON.stringify([{ campaign_id: "c3", account_id: "m1", name: "Interacción (MSJ)", objective: "OUTCOME_SALES" }])]);
-assert.equal(Number((await generalDe("a")).spend_b2b), 100, "(MSJ) también separa");
+assert.equal(Number((await generalDe("a")).spend_b2b), 60, "(MSJ) ya no separa");
+await q(`select public.meta_campanas_upsert($1::jsonb,'[]'::jsonb)`, [JSON.stringify([{ campaign_id: "c3", account_id: "m1", name: "Interacción (B2B)", objective: "OUTCOME_SALES" }])]);
+assert.equal(Number((await generalDe("a")).spend_b2b), 100, "al etiquetarla, corrige los días anteriores");
 const conPrevio = (await q(`select public.portal_cliente('clave','a',$1::date,$1::date) r`, [hoy]))[0].r;
 assert.equal(Number(conPrevio.prev.spend_b2b), 0, "el período anterior de un día no tiene B2B");
 const semana = (await q(`select public.portal_cliente('clave','a',$1::date,$2::date) r`, [dia(7), hoy]))[0].r;
