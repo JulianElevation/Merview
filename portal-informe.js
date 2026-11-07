@@ -408,13 +408,13 @@ function hojaDestacar(ctx) {
   });
   const lista = [...filas.values()].sort((a, b) => Number(!!(b.vendido && b.conv)) - Number(!!(a.vendido && a.conv)) || (b.unidades ?? -1) - (a.unidades ?? -1));
   const motivo = (f) => (f.vendido && f.conv ? "Más vendido y alta conversión" : f.vendido ? "Más vendido" : "Alta conversión");
-  return { titulo: "Productos a destacar", fuente: `Ventas: Tiendanube, órdenes pagadas. ${mejorConv.length ? `Conversión: ${F_CATALOGO} Alta conversión: por encima del promedio (${tasa(promedio, 1)}), con al menos ${MIN_CLICS} clics y ${MIN_COMPRAS} compras. Con menos de ${MIN_CLICS} clics no se muestra la tasa.` : ""}`.trim(), cuerpo: `<table class="i-tab i-campanas"><thead><tr><th class="i-nom">Producto</th><th class="i-nom">Por qué</th><th>Unidades</th><th>Importe</th><th>Clics</th><th>Compras</th><th>Clic a compra</th></tr></thead><tbody>
+  return { titulo: "Productos a destacar", fuente: `Ventas: Tiendanube, órdenes pagadas. ${mejorConv.length ? `Conversión: ${F_CATALOGO} Alta conversión: por encima del promedio (${tasa(promedio, 1)}), con al menos ${MIN_CLICS} clics y ${MIN_COMPRAS} compras. Con menos de ${MIN_CLICS} clics no se muestra la tasa.` : ""}`.trim(), cuerpo: `<table class="i-tab i-campanas i-destacar"><thead><tr><th class="i-nom">Producto</th><th class="i-nom">Por qué</th><th>Unidades</th><th>Importe</th><th>Clics</th><th>Compras</th><th>Clic a compra</th></tr></thead><tbody>
     ${lista.map((f) => `<tr><td class="i-nom">${esc(f.nombre)}</td><td class="i-nom">${esc(motivo(f))}</td><td>${f.unidades == null ? "—" : nf0.format(f.unidades)}</td><td>${f.total == null ? "—" : money(f.total)}</td><td>${f.m ? nf0.format(f.m.clics) : "—"}</td><td>${f.m ? nf0.format(f.m.compras) : "—"}</td><td>${f.m && f.m.clics >= MIN_CLICS ? tasa(f.m.compras, f.m.clics) : "—"}</td></tr>`).join("")}</tbody></table>` };
 }
 function hojaConversion(ctx) {
   const lista = (ctx.meta?.productos || []).filter((x) => x.clics >= 20).sort((a, b) => b.compras - a.compras || b.clics - a.clics).slice(0, 15);
   if (!lista.length) return null;
-  return { titulo: "Conversión por producto", fuente: `${F_CATALOGO} Solo productos con al menos 20 clics.`, cuerpo: `<table class="i-tab i-compacta"><thead><tr><th class="i-nom">Producto</th><th>Inversión</th><th>Clics</th><th>Carritos</th><th>Clic a carrito</th><th>Compras</th><th>Clic a compra</th><th>Costo x compra</th></tr></thead><tbody>
+  return { titulo: "Conversión por producto", fuente: `${F_CATALOGO} Solo productos con al menos 20 clics.`, cuerpo: `<table class="i-tab i-compacta i-conversion"><thead><tr><th class="i-nom">Producto</th><th>Inversión</th><th>Clics</th><th>Carritos</th><th>Clic a carrito</th><th>Compras</th><th>Clic a compra</th><th>Costo x compra</th></tr></thead><tbody>
     ${lista.map((x) => `<tr><td class="i-nom">${esc(x.nombre)}</td><td>${money(x.spend)}</td><td>${nf0.format(x.clics)}</td><td>${nf0.format(x.carritos)}</td><td>${tasa(x.carritos, x.clics)}</td><td>${nf0.format(x.compras)}</td><td>${tasa(x.compras, x.clics)}</td><td>${x.compras ? money(x.spend / x.compras) : "—"}</td></tr>`).join("")}</tbody></table>` };
 }
 function hojaTop(ctx) {
@@ -512,6 +512,8 @@ async function hojaASlide(hoja) {
         if (tag === "em") { const b = R(caja); medida.x = b.x; medida.w = b.w; medida.y = b.y + (b.h - medida.h) / 2; }
         // El nombre de un anuncio tiene que cortar en su columna: el script de Google ensancha cada caja un 12% más 6 puntos.
         if (tag === "h4") medida.w = (R(caja).w - 6) / 1.12;
+        // Un texto de varias líneas no puede salirse de su caja: pisaría el número de página o el borde de la hoja.
+        else if (r.getClientRects().length > 1) { const b = R(caja); medida.w = Math.min(medida.w, (b.x + b.w - medida.x - 6) / 1.12); }
         // Un nombre muy largo se corta con puntos suspensivos también en Slides, para que no pise la columna siguiente.
         let txt = n.textContent.trim();
         if (cs.textOverflow === "ellipsis" && el.scrollWidth > el.clientWidth) {
