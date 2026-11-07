@@ -851,7 +851,7 @@ function alertas(conInv) {
     ${tarjeta("inv", "Sin gasto hace 12 horas o más", AG.gasto_medible ? "Invirtieron en los últimos 30 días, pero se frenaron." : "Se puede medir desde el mediodía.", sinGasto.map((c) => fila(c, "Frenado")), AG.gasto_medible ? "Todos están gastando." : "Todavía midiendo.", !AG.gasto_medible)}
     ${tarjeta("ven", `Sin ventas hace ${ALERTA_DIAS} días o más`, "Tiendas conectadas que siguen con inversión.", sinVenta.map((c) => fila(c, c.ult_venta == null ? "Sin ventas" : `${nf0.format(num(c.dias_sin_venta))} días`)), "Todos vendieron en estos días.")}
     ${tarjeta("mer", "Cayó el retorno (MER)", "Últimos 7 días contra los 7 anteriores: bajó de color, con 3 puntos o un 30% menos.", caida.map((c) => fila(c, `<span class="${merCls(c.antes)}">${merTxt(c.antes)}</span> → <span class="${merCls(c.ahora)}">${merTxt(c.ahora)}</span>`)), "Nadie bajó de color.")}
-    ${tarjeta("cli", "Clientes en rojo", "MER menor a 3 en las fechas de arriba.", rojos.map((c) => fila(c, merTxt(c.mer))), "Ningún cliente en rojo.")}
+    ${tarjeta("cli", "Clientes en rojo", "MER menor a 3 en las fechas de arriba.", rojos.map((c) => fila(c, `<span class="r">${merTxt(c.mer)}</span>`)), "Ningún cliente en rojo.")}
   </div>`;
 }
 function bloqueMer(conInv) {
