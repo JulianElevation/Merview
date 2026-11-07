@@ -460,7 +460,10 @@ async function hojaASlide(hoja) {
     for (const n of el.childNodes) {
       if (n.nodeType === Node.TEXT_NODE && n.textContent.trim()) {
         const r = document.createRange(); r.selectNodeContents(n);
-        items.push({ t: "texto", ...R(r.getBoundingClientRect()), txt: n.textContent.trim(), ...tipografia(cs) });
+        const medida = R(r.getBoundingClientRect());
+        // El nombre de un anuncio tiene que cortar en su columna: el script de Google ensancha cada caja un 12% más 6 puntos.
+        if (tag === "h4") medida.w = (R(caja).w - 6) / 1.12;
+        items.push({ t: "texto", ...medida, txt: n.textContent.trim(), ...tipografia(cs) });
       } else if (n.nodeType === Node.ELEMENT_NODE) await visitar(n);
     }
   };
