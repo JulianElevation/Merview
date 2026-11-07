@@ -64,10 +64,10 @@ const BAJAS = [], MOV = [
   { id: 1, client_id: "a", name: "Tienda de prueba A", tipo: "alta", fecha: "2026-09-15", motivo: null },
 ];
 function agencia() {
-  const extra = { a: {}, b: { sin_gasto_8h: true }, c: { inv_ayer: 0 }, d: { ult_venta: "2026-11-01", dias_sin_venta: 5, fac_7: 100000, fac_7_prev: 400000 }, e: {}, f: { inv_30: 0 }, g: { inv_ayer: 0, sin_gasto_8h: true } };
+  const extra = { a: {}, b: { sin_gasto_12h: true }, c: { inv_ayer: 0 }, d: { ult_venta: "2026-11-01", dias_sin_venta: 5, fac_7: 200000, fac_7_prev: 500000 }, e: {}, f: { inv_30: 0 }, g: { inv_ayer: 0, sin_gasto_12h: true } };
   return {
-    ahora: new Date().toISOString(), foto_lista: true,
-    clientes: CLIENTES.map((c) => ({ id: c.id, name: c.name, kind: c.kind, con_meta: true, inv_hoy: 5000, inv_ayer: 5000, inv_30: 90000, fac_7: 500000, fac_7_prev: 500000, tiendas_vivas: c.vivo, ult_venta: new Date().toISOString().slice(0, 10), dias_sin_venta: 0, sin_gasto_8h: false, ...(extra[c.id] || {}) })),
+    ahora: new Date().toISOString(), gasto_medible: true,
+    clientes: CLIENTES.map((c) => ({ id: c.id, name: c.name, kind: c.kind, con_meta: true, inv_hoy: 5000, inv_ayer: 5000, inv_30: 90000, fac_7: 500000, fac_7_prev: 500000, tiendas_vivas: c.vivo, ult_venta: new Date().toISOString().slice(0, 10), dias_sin_venta: 0, sin_gasto_12h: false, inv_7: 100000, inv_7_prev: 100000, ...(extra[c.id] || {}) })),
     movimientos: MOV,
     inactivos: BAJAS.map((c) => ({ id: c.id, name: c.name })),
     tiendas_libres: [{ id: "99", name: "Tienda nueva conectada" }],

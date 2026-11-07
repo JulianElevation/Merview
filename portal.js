@@ -827,30 +827,30 @@ function tablaOrdenes() {
 }
 
 /* ---------- Vista: Agencia ---------- */
-const ALERTA_DIAS = 3, CAIDA = 0.3;
-function alertas() {
+const ALERTA_DIAS = 3, CAIDA_PCT = 0.3, CAIDA_PUNTOS = 3;
+function alertas(conInv) {
   if (agError && !AG) return '<div class="aviso err">No se pudieron traer las alertas. Probá de nuevo en unos minutos.</div>';
   if (!AG) return '<div class="skel" style="height:150px"></div>';
-  const mes = hoyBA().slice(0, 7);
   const activos = AG.clientes.filter((c) => c.con_meta && num(c.inv_30) > 0);
   const venden = AG.clientes.filter((c) => c.kind !== "leads" && num(c.tiendas_vivas) > 0 && num(c.inv_30) > 0);
   const fila = (c, val) => `<li data-id="${esc(c.id)}" tabindex="0"><span>${esc(c.name)}</span><b>${val}</b></li>`;
-  const tarjeta = (ic, titulo, ayuda, items, vacio, grave, midiendo) => `<section class="alerta ${midiendo ? "" : items.length ? (grave ? "mal" : "ojo") : "bien"}">
+  const tarjeta = (ic, titulo, ayuda, items, vacio, midiendo) => `<section class="alerta ${midiendo ? "" : items.length ? "mal" : "bien"}">
     <h3>${icono(ic)}<span>${esc(titulo)}</span><b>${midiendo ? "—" : items.length}</b></h3><p>${esc(ayuda)}</p>
     ${items.length ? `<ul class="lista">${items.join("")}</ul>` : `<p class="${midiendo ? "sub" : "alerta-ok"}">${esc(vacio)}</p>`}</section>`;
-  const sin8 = AG.foto_lista ? activos.filter((c) => c.sin_gasto_8h) : [];
-  const sinAyer = activos.filter((c) => !(num(c.inv_ayer) > 0));
+  const sinGasto = AG.gasto_medible ? activos.filter((c) => c.sin_gasto_12h) : [];
   const sinVenta = venden.filter((c) => c.ult_venta == null || num(c.dias_sin_venta) >= ALERTA_DIAS)
     .sort((a, b) => (b.ult_venta == null) - (a.ult_venta == null) || num(b.dias_sin_venta) - num(a.dias_sin_venta));
-  const caida = venden.filter((c) => num(c.fac_7_prev) > 0 && num(c.fac_7) < num(c.fac_7_prev) * (1 - CAIDA))
-    .map((c) => ({ ...c, cae: 1 - num(c.fac_7) / num(c.fac_7_prev) })).sort((a, b) => b.cae - a.cae);
-  const bajas = AG.movimientos.filter((m) => m.tipo === "baja" && String(m.fecha).slice(0, 7) === mes);
+  // Cae el MER: últimos 7 días contra los 7 anteriores, 3 puntos o 30%.
+  const caida = AG.clientes.filter((c) => c.kind !== "leads" && num(c.inv_7) > 0 && num(c.inv_7_prev) > 0 && num(c.fac_7_prev) > 0)
+    .map((c) => ({ ...c, ahora: num(c.fac_7) / num(c.inv_7), antes: num(c.fac_7_prev) / num(c.inv_7_prev) }))
+    .filter((c) => c.ahora < c.antes && (c.antes - c.ahora >= CAIDA_PUNTOS || (c.antes - c.ahora) / c.antes >= CAIDA_PCT))
+    .sort((a, b) => (b.antes - b.ahora) - (a.antes - a.ahora));
+  const rojos = conInv.filter((c) => c.mer < 3).sort((a, b) => a.mer - b.mer);
   return `<div class="alertas">
-    ${tarjeta("inv", "Sin gasto en 8 horas", AG.foto_lista ? "La inversión no se movió desde hace 8 horas." : "Empieza a medir 8 horas después de activarse.", sin8.map((c) => fila(c, "Frenado")), AG.foto_lista ? "Todos están gastando." : "Todavía midiendo.", true, !AG.foto_lista)}
-    ${tarjeta("inv", "Sin gasto ayer", "Invirtieron en los últimos 30 días, pero ayer no.", sinAyer.map((c) => fila(c, "$ 0")), "Todos gastaron ayer.", true)}
-    ${tarjeta("ven", `Sin ventas hace ${ALERTA_DIAS} días o más`, "Tiendas conectadas que siguen con inversión.", sinVenta.map((c) => fila(c, c.ult_venta == null ? "Sin ventas" : `${nf0.format(num(c.dias_sin_venta))} días`)), "Todos vendieron en estos días.", true)}
-    ${tarjeta("mer", "Cayó la facturación", "Últimos 7 días contra los 7 anteriores, caída del 30% o más.", caida.map((c) => fila(c, `▼ ${Math.round(c.cae * 100)}%`)), "Nadie cayó tanto.", false)}
-    ${tarjeta("cli", "Bajas de este mes", "Clientes que se fueron este mes.", bajas.map((m) => `<li><span>${esc(m.name)}</span><b>${ddmm(String(m.fecha).slice(0, 10))}</b></li>`), "Ninguna baja este mes.", false)}
+    ${tarjeta("inv", "Sin gasto hace 12 horas o más", AG.gasto_medible ? "Invirtieron en los últimos 30 días, pero se frenaron." : "Se puede medir desde el mediodía.", sinGasto.map((c) => fila(c, "Frenado")), AG.gasto_medible ? "Todos están gastando." : "Todavía midiendo.", !AG.gasto_medible)}
+    ${tarjeta("ven", `Sin ventas hace ${ALERTA_DIAS} días o más`, "Tiendas conectadas que siguen con inversión.", sinVenta.map((c) => fila(c, c.ult_venta == null ? "Sin ventas" : `${nf0.format(num(c.dias_sin_venta))} días`)), "Todos vendieron en estos días.")}
+    ${tarjeta("mer", "Cayó el retorno (MER)", "Últimos 7 días contra los 7 anteriores: bajó 3 puntos o un 30%.", caida.map((c) => fila(c, `${merTxt(c.antes)} → ${merTxt(c.ahora)}`)), "Nadie cayó tanto.")}
+    ${tarjeta("cli", "Clientes en rojo", "MER menor a 3 en las fechas de arriba.", rojos.map((c) => fila(c, merTxt(c.mer))), "Ningún cliente en rojo.")}
   </div>`;
 }
 function bloqueMer(conInv) {
@@ -909,7 +909,7 @@ function vistaAgencia() {
       ${kpi("Facturación de clientes", money(fac), cambio(fac, pf), "", "fac")}${kpi("Inversión gestionada", money(inv), cambio(inv, pi), "", "inv")}
       ${kpi("MER global", merTxt(mer), pm ? cambio(mer, pm) : "", merCls(mer), "mer")}${kpi("Clientes invirtiendo", nf0.format(conInv.length), `de ${eco.length} con tienda`, "", "tie")}
     </div>
-    <h2 class="titulo-sec">Alertas</h2>${alertas()}
+    <h2 class="titulo-sec">Alertas</h2>${alertas(conInv)}
     ${bloqueMer(conInv)}
     <div class="dos">
       <section class="bloque"><h2>Mayor facturación</h2><ul class="lista">${top.map((c, i) => `<li data-id="${esc(c.id)}" tabindex="0"><span><i class="pos">${i + 1}</i>${esc(c.name)}</span><b>${money(c.f)}<small>${pct(c.f, totTop)}%</small></b></li>`).join("") || "<li>Sin datos</li>"}</ul></section>

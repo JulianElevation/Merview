@@ -37,6 +37,7 @@ await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal_vista
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal_rapido.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_link_cliente.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_agencia.sql"), "utf8"));
+await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_agencia_12h.sql"), "utf8"));
 console.log("ok  la migración corre completa");
 
 const hoy = (await q(`select (now() at time zone 'America/Argentina/Buenos_Aires')::date::text d`))[0].d;
@@ -213,26 +214,31 @@ const ag = async () => (await q(`select public.portal_agencia('clave') r`))[0].r
 await db.exec(`insert into public.meta_state (account_id, last_ok_at) values ('m1', now()), ('m2', now()) on conflict (account_id) do update set last_ok_at = now(), last_error = null`);
 let a0 = await ag();
 const ficha = (r, id) => r.clientes.find((c) => c.id === id);
-assert.equal(a0.foto_lista, false, "sin foto de hace 8 h no se afirma nada");
-assert.equal(ficha(a0, "a").sin_gasto_8h, false);
+const horaBA = (await q(`select extract(hour from now() at time zone 'America/Argentina/Buenos_Aires')::int h`))[0].h;
+assert.equal(a0.gasto_medible, horaBA >= 12, "sin foto solo se mide después del mediodía");
+assert.equal(ficha(a0, "a").sin_gasto_12h, false, "gastó hoy");
+await db.exec(`insert into public.clients (id,name,kind,meta_accounts) values ('z','Sin gastar','ecommerce','{m7}'); insert into public.meta_state (account_id, last_ok_at) values ('m7', now())`);
+assert.equal(ficha(await ag(), "z").sin_gasto_12h, horaBA >= 12, "hoy en cero después del mediodía");
+assert.ok(Number(ficha(a0, "a").inv_7) > 0, "inversión de la semana para el MER");
 assert.equal(ficha(a0, "a").ult_venta, hoy);
 assert.equal(ficha(a0, "a").dias_sin_venta, 0);
 assert.ok(Number(ficha(a0, "a").inv_hoy) > 0);
 assert.equal(ficha(a0, "x"), undefined, "los dados de baja no aparecen en alertas");
 assert.ok(a0.tiendas_libres.every((t) => t.id !== "s1"), "tienda ya asignada no es libre");
-// m1 gastó 300 hoy; la foto de hace 8 h ya decía 300: no gastó nada desde entonces. m2 no tiene foto: sí gastó.
+// m1 gastó 300 hoy; la foto de hace 12 h ya decía 300: no gastó nada desde entonces. m2 no tiene foto: sí gastó.
 await db.exec(`
   insert into public.meta_live (day,account_id,currency,spend,messages) values ('${hoy}','m2','ARS',50,0) on conflict do nothing;
-  insert into public.meta_foto (tomada_at, day, account_id, spend) values (now() - interval '8 hours 20 minutes', '${hoy}', 'm1', 300);
+  insert into public.meta_foto (tomada_at, day, account_id, spend) values (now() - interval '12 hours 20 minutes', '${hoy}', 'm1', 300);
 `);
 a0 = await ag();
-assert.equal(a0.foto_lista, true);
-assert.equal(ficha(a0, "a").sin_gasto_8h, true, "el gasto no se movió en 8 horas");
-assert.equal(ficha(a0, "b").sin_gasto_8h, false, "gastó en estas 8 horas");
+assert.equal(a0.gasto_medible, true);
+assert.equal(ficha(a0, "a").sin_gasto_12h, true, "el gasto no se movió en 12 horas");
+assert.equal(ficha(a0, "b").sin_gasto_12h, false, "gastó en estas 12 horas");
+assert.equal(ficha(a0, "z").sin_gasto_12h, true, "con foto, tampoco se movió");
 await db.exec(`update public.meta_live set spend = 340 where day = '${hoy}' and account_id = 'm1'`);
-assert.equal(ficha(await ag(), "a").sin_gasto_8h, false, "volvió a gastar");
+assert.equal(ficha(await ag(), "a").sin_gasto_12h, false, "volvió a gastar");
 await db.exec(`update public.meta_live set spend = 300 where day = '${hoy}' and account_id = 'm1'; update public.meta_state set last_error = 'x' where account_id = 'm1'`);
-assert.equal(ficha(await ag(), "a").sin_gasto_8h, false, "si Meta no se puede leer, no se acusa a nadie");
+assert.equal(ficha(await ag(), "a").sin_gasto_12h, false, "si Meta no se puede leer, no se acusa a nadie");
 await db.exec(`update public.meta_state set last_error = null where account_id = 'm1'`);
 await q(`select public.meta_foto_tomar()`);
 assert.ok((await q(`select count(*)::int n from public.meta_foto where account_id='m1'`))[0].n >= 2);
@@ -273,7 +279,7 @@ assert.deepEqual(pAg, { m: false, f: false, t: false });
 console.log("ok  agencia: alertas, altas y bajas");
 
 await db.exec(readFileSync(join(raiz, "supabase/rollback_portal.sql"), "utf8"));
-await db.exec(`delete from public.clients where id in ('nina-azul-s-a','de-leads')`);
+await db.exec(`delete from public.clients where id in ('nina-azul-s-a','de-leads','z')`);
 assert.equal((await q(`select count(*)::int n from public.clients`))[0].n, 4);
 assert.equal((await q(`select to_regclass('public.tn_orders') t`))[0].t, null);
 console.log("ok  la marcha atrás saca todo y deja MER View intacto");
