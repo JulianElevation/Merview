@@ -416,7 +416,7 @@ async function svgAPng(svg, w, h) {
 }
 // Traduce una hoja ya dibujada a posiciones en puntos: lo que se ve es lo que sale en Slides.
 async function hojaASlide(hoja) {
-  const base = hoja.getBoundingClientRect(), k = 842 / base.width, items = [];
+  const base = hoja.getBoundingClientRect(), k = 720 / base.width, items = [];
   const R = (r) => ({ x: (r.left - base.left) * k, y: (r.top - base.top) * k, w: r.width * k, h: r.height * k });
   const tipografia = (cs) => ({ size: Math.round(parseFloat(cs.fontSize) * k * 10) / 10, bold: parseInt(cs.fontWeight, 10) >= 600, color: aHex(cs.color) || "#221E33", align: cs.textAlign });
   const visitar = async (el) => {
@@ -481,7 +481,11 @@ async function abrirEnSlides(boton) {
   boton.disabled = true; const antes = boton.textContent; boton.textContent = "Armando…";
   try {
     const hojas = [];
-    for (const h of document.querySelectorAll("#infPapel .hoja")) hojas.push(await hojaASlide(h));
+    // Google arma siempre en 16:9, sin importar el tamaño que se le pida: cada hoja se redibuja en ese formato para medirla.
+    for (const h of document.querySelectorAll("#infPapel .hoja")) {
+      h.classList.add("modo-slide");
+      try { hojas.push(await hojaASlide(h)); } finally { h.classList.remove("modo-slide"); }
+    }
     // Sin encabezados especiales: el script de Google responde sin pedir permiso previo al navegador.
     const r = await fetch(SLIDES_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ key: clave, titulo: $("informe").dataset.archivo, hojas }) });
     const j = await r.json();

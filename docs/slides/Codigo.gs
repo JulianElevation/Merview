@@ -7,7 +7,6 @@ var SUPABASE_KEY = "sb_publishable_6misivLkI8felkprfbr7Sg_7lO5BhjL"; // Pública
 var CARPETA = "Análisis del portal (temporales)";
 var DIAS_GUARDADO = 7;
 var FUENTE = "Figtree";
-var ANCHO = 842, ALTO = 595; // A4 apaisado, en puntos.
 var INSET_X = 7.2, INSET_Y = 3.6; // Margen interno que Slides pone a toda caja de texto.
 
 function doPost(e) {
@@ -52,7 +51,6 @@ function limpiar(c) {
 function armar(pedido) {
   var creada = Slides.Presentations.create({
     title: String(pedido.titulo || "Análisis de resultados").slice(0, 200),
-    pageSize: { width: { magnitude: ANCHO, unit: "PT" }, height: { magnitude: ALTO, unit: "PT" } },
   });
   var id = creada.presentationId;
   var pres = SlidesApp.openById(id);
