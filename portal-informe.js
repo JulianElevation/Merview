@@ -226,6 +226,24 @@ function corte(lista, nombre, cab) {
     <tr class="i-tot"><td>Total</td><td>${nf0.format(tv)}</td><td></td><td>${money(total)}</td><td></td></tr></tbody></table></div>`;
 }
 
+// Dibujo propio para los anuncios de catálogo: Meta no le da las fotos de los productos al portal.
+const ILUSTRACION_CATALOGO = (() => {
+  const v = "#7C3AED", c = "#C9B8F5", r = "#D9578C", o = "#3B3650";
+  const dibujos = [
+    `<path d="M28 20 40 14Q50 22 60 14L72 20 84 36 72 44 68 38V78H32V38L28 44 16 36Z" fill="${v}"/>`,
+    `<path d="M32 12H68L74 84H56L50 40 44 84H26Z" fill="${o}"/><path d="M32 20H68" stroke="${c}" stroke-width="2"/>`,
+    `<path d="M40 12 44 26H56L60 12 64 14 60 34 76 84H24L40 34 36 14Z" fill="${r}"/>`,
+    `<path d="M42 46V26L58 16V46Z" fill="${r}"/><rect x="38" y="46" width="24" height="10" fill="${c}"/><rect x="36" y="56" width="28" height="28" rx="2" fill="${o}"/>`,
+    `<rect x="44" y="12" width="12" height="12" rx="2" fill="${o}"/><rect x="46" y="24" width="8" height="6" fill="${c}"/><rect x="30" y="30" width="40" height="54" rx="6" fill="${v}"/><rect x="40" y="50" width="20" height="14" rx="2" fill="#fff"/>`,
+    `<rect x="26" y="34" width="48" height="14" rx="3" fill="${r}"/><rect x="30" y="48" width="40" height="32" rx="4" fill="${c}"/><rect x="40" y="58" width="20" height="10" rx="2" fill="#fff"/>`,
+  ];
+  const celdas = dibujos.map((d, i) => {
+    const x = 8 + (i % 2) * 96, y = 12 + Math.floor(i / 2) * 104;
+    return `<g transform="translate(${x} ${y})"><rect width="88" height="96" rx="8" fill="#fff" stroke="#E8E5EF"/><g transform="translate(-6 -2)">${d}</g></g>`;
+  }).join("");
+  return `<svg class="i-cat" viewBox="0 0 200 362" role="img" aria-label="Anuncio de catálogo">${celdas}<text x="100" y="344" text-anchor="middle" font-size="13" font-weight="600" fill="#6B6780">Anuncio de catálogo</text></svg>`;
+})();
+
 /* ---------- Hojas ---------- */
 const F_TIENDA = "Tiendanube, órdenes pagadas por fecha de creación.";
 const F_MIX = "Tiendanube (órdenes pagadas) y Meta Ads (inversión).";
@@ -340,7 +358,7 @@ function hojaCreativos(ctx) {
   if (!lista.length) return null;
   // Con menos de 3 compras la muestra es chica: esos entran solo si no alcanza con el resto.
   const firmes = lista.filter((x) => x.compras >= 3), top = (firmes.length >= 3 ? firmes : lista).slice(0, 5);
-  const fichas = top.map((x, i) => { const imgs = x.imagenes || []; return `<article class="i-pieza"><div class="i-img" data-imgs="${esc(JSON.stringify(imgs))}" data-i="0">${imgs.length ? `<img src="${esc(imgs[0])}" alt="" referrerpolicy="no-referrer">` : "<span>Sin vista previa</span>"}<em>${i + 1}</em><label class="inf-subir">Subir imagen<input type="file" accept="image/*"></label>${imgs.length > 1 ? `<div class="inf-toma"><button type="button" data-toma="-1" aria-label="Toma anterior">‹</button><span>1/${imgs.length}</span><button type="button" data-toma="1" aria-label="Toma siguiente">›</button></div>` : ""}</div>
+  const fichas = top.map((x, i) => { const imgs = x.imagenes || []; return `<article class="i-pieza"><div class="i-img" data-imgs="${esc(JSON.stringify(imgs))}" data-i="0">${imgs.length ? `<img src="${esc(imgs[0])}" alt="" referrerpolicy="no-referrer">` : x.vista ? ILUSTRACION_CATALOGO : "<span>Sin vista previa</span>"}<em>${i + 1}</em><label class="inf-subir">Subir imagen<input type="file" accept="image/*"></label>${imgs.length > 1 ? `<div class="inf-toma"><button type="button" data-toma="-1" aria-label="Toma anterior">‹</button><span>1/${imgs.length}</span><button type="button" data-toma="1" aria-label="Toma siguiente">›</button></div>` : ""}</div>
     <h4>${esc(x.nombre)}</h4><dl><div><dt>Compras</dt><dd>${nf0.format(x.compras)}</dd></div><div><dt>ROAS</dt><dd>${x.spend > 0 ? merTxt(x.valor / x.spend) : "—"}</dd></div><div><dt>Inversión</dt><dd>${money(x.spend)}</dd></div><div><dt>Facturación</dt><dd>${money(x.valor)}</dd></div><div><dt>Costo x compra</dt><dd>${money(x.spend / x.compras)}</dd></div><div><dt>CTR</dt><dd>${tasa(x.clics, x.impresiones)}</dd></div></dl></article>`; }).join("");
   return { titulo: "Creativos ganadores", fuente: F_META, cuerpo: `<div class="i-piezas n${top.length}">${fichas}</div>` };
 }
@@ -417,6 +435,7 @@ $("informe").addEventListener("change", (e) => {
   lector.onload = () => {
     caja.querySelector("span:not(.inf-toma span)")?.remove();
     caja.querySelector(".inf-toma")?.remove();
+    caja.querySelector(".i-cat")?.remove();
     let img = caja.querySelector("img");
     if (!img) { img = document.createElement("img"); img.alt = ""; caja.prepend(img); }
     img.src = lector.result;
