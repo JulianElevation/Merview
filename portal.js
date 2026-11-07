@@ -67,7 +67,7 @@ function ultimosMeses() {
 }
 
 /* ---------- Estado ---------- */
-const E = { v: "general", c: null, p: "mes", desde: null, hasta: null, q: "", soloActivos: true, sortK: "spend", sortDir: -1, limite: 100, graf: { ms: ["fac"], p: "arriba", g: null, desde: null, hasta: null, tabla: false }, agMer: "r", agForm: null, agErr: null };
+const E = { v: "general", c: null, p: "mes", desde: null, hasta: null, q: "", soloActivos: true, sortK: "spend", sortDir: -1, limite: 100, graf: { ms: ["fac"], p: "arriba", g: null, desde: null, hasta: null, tabla: false }, agMer: "g", agForm: null, agErr: null };
 let AG = null, agCuando = 0, agError = null, clave = null, GEN = null, CLI = null, ultimaOk = null, turno = 0, timer = null, ultimoNumero = null, sondeo = false, primeraVez = true;
 
 function leerUrl() {
