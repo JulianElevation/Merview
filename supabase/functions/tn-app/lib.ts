@@ -378,7 +378,8 @@ async function imagenesAnuncios(ids: string[], token: string, f: Fetcher) {
       let vista: string | null = null;
       // Sin ninguna imagen (catálogo, en general), la vista previa de Meta muestra el anuncio real.
       if (!imagenes.length) {
-        const p = await pedir(`${id}/previews`, { ad_format: "INSTAGRAM_STANDARD" });
+        // Feed de Facebook: en Instagram, Meta responde "Preview Not Available" para catálogo.
+        const p = await pedir(`${id}/previews`, { ad_format: "MOBILE_FEED_STANDARD" });
         vista = urlDeVistaPrevia(p.data?.[0]?.body);
       }
       out[id] = { imagenes, vista };
