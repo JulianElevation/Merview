@@ -742,7 +742,7 @@ function fuentes() {
 function vistaCliente() {
   if (!E.c || !CLI) return `<div class="cab"><h1>Elegí un cliente</h1></div><p class="sub">Usá el desplegable de arriba.</p>`;
   const c = CLI.cliente, dias = diasCompletos(CLI.dias || []);
-  const nombre = `<div class="cab"><div><h1>${esc(c.name)}</h1><p class="sub">${rangoTxt(rango())}</p></div><div class="cab-der">${fuentesCliente()}${modoCliente ? "" : `<button class="btn" id="marcaB2b" aria-pressed="${!!c.separa_b2b}" title="Separa del MER las campañas con (B2B) en el nombre">${c.separa_b2b ? "Canal B2B abierto" : "Abrir canal B2B"}</button><button class="btn" id="linkCliente">Link para el cliente</button>`}</div></div>`;
+  const nombre = `<div class="cab"><div><h1>${esc(c.name)}</h1><p class="sub">${rangoTxt(rango())}</p></div><div class="cab-der">${fuentesCliente()}${modoCliente ? "" : `<button class="btn pri" id="generarAnalisis">Generar análisis</button><button class="btn" id="marcaB2b" aria-pressed="${!!c.separa_b2b}" title="Separa del MER las campañas con (B2B) en el nombre">${c.separa_b2b ? "Canal B2B abierto" : "Abrir canal B2B"}</button><button class="btn" id="linkCliente">Link para el cliente</button>`}</div></div>`;
   const spend = dias.reduce((s, d) => s + num(d.spend), 0);
   if (c.kind === "leads") {
     const msgs = dias.reduce((s, d) => s + num(d.messages), 0);
@@ -1019,6 +1019,7 @@ vista.addEventListener("click", (e) => {
     return pintar();
   }
   if (e.target.id === "linkCliente") return linkCliente(false);
+  if (e.target.id === "generarAnalisis") return abrirFormInforme();
   if (e.target.id === "marcaB2b") {
     if (!CLI.cliente.separa_b2b) return abrirDialogoB2b(CLI.cliente.name);
     if (!confirm("¿Cerrar el canal B2B de este cliente? El MER vuelve a usar toda la inversión.")) return;

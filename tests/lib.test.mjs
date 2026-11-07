@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import {
-  BUYER_FIELDS, campanasMeta, clienteTN, filasCompradores, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana, ventanaAtras,
+  agruparAnuncios, analisisMeta, BUYER_FIELDS, campanasMeta, clienteTN, resumirMeta, filasCompradores, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana, ventanaAtras,
 } from "../supabase/functions/tn-app/lib.ts";
 
 const res = (status, body, headers = {}) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers });
@@ -182,4 +182,59 @@ test("trae campañas con su nombre actual, aunque ya no estén en la lista", asy
   assert.deepEqual(filas[0], { day: "2026-11-05", campaign_id: "c1", account_id: "9", currency: "ARS", spend: 10.5, messages: 4 });
   assert.equal(filas[1].currency, "USD");
   await assert.rejects(campanasMeta("9", "t", "a", "b", async () => res(400, { error: { message: "sin permiso" } })), /sin permiso/);
+});
+
+const filaMeta = (extra = {}) => ({
+  spend: "100", impressions: "1000", inline_link_clicks: "50", account_currency: "ARS",
+  actions: [
+    { action_type: "landing_page_view", value: "40" }, { action_type: "omni_landing_page_view", value: "42" },
+    { action_type: "omni_add_to_cart", value: "10" }, { action_type: "omni_initiated_checkout", value: "5" },
+    { action_type: "omni_purchase", value: "2" }, { action_type: "onsite_conversion.messaging_conversation_started_7d", value: "3" },
+  ],
+  action_values: [{ action_type: "omni_purchase", value: "900" }],
+  ...extra,
+});
+
+test("el embudo usa los eventos omni y pasa a pesos las cuentas en dólares", () => {
+  assert.deepEqual(resumirMeta(filaMeta()), { spend: 100, impresiones: 1000, clics: 50, visitas: 42, carritos: 10, pagos: 5, compras: 2, valor: 900, mensajes: 3 });
+  const usd = resumirMeta(filaMeta({ account_currency: "USD" }), 1000);
+  assert.equal(usd.spend, 100000);
+  assert.equal(usd.valor, 900000);
+  assert.equal(usd.compras, 2, "las compras no se convierten");
+  assert.equal(resumirMeta({ spend: "1" }).compras, 0, "sin acciones da cero");
+});
+
+test("un anuncio en varios conjuntos suma y toma la imagen del que más invirtió", () => {
+  const out = agruparAnuncios([
+    filaMeta({ ad_id: "1", ad_name: "Pieza A", spend: "10" }),
+    filaMeta({ ad_id: "2", ad_name: "Pieza A", spend: "90" }),
+    filaMeta({ ad_id: "3", ad_name: "Pieza B", spend: "5", actions: [{ action_type: "purchase", value: "1" }] }),
+  ]);
+  assert.equal(out[0].nombre, "Pieza A");
+  assert.equal(out[0].id, "2");
+  assert.equal(out[0].spend, 100);
+  assert.equal(out[0].compras, 4);
+});
+
+test("el análisis trae cuenta, comparación, campañas y anuncios; sin imagen no se cae", async () => {
+  const llamadas = [];
+  const f = async (url) => {
+    llamadas.push(url);
+    const u = new URL(url);
+    if (u.searchParams.has("ids")) return res(500, { error: { message: "no" } });
+    const rango = JSON.parse(u.searchParams.get("time_range"));
+    const nivel = u.searchParams.get("level");
+    if (nivel === "account") return res(200, { data: [filaMeta({ spend: rango.since === "2026-09-01" ? "50" : "100" })] });
+    if (nivel === "campaign") return res(200, { data: [filaMeta({ campaign_id: "c1", campaign_name: "Camp" })] });
+    return res(200, { data: [filaMeta({ ad_id: "a1", ad_name: "Pieza" })] });
+  };
+  const r = await analisisMeta("9", "tok", "2026-10-01", "2026-10-31", "2026-09-01", "2026-09-30", 1, f);
+  assert.equal(r.periodo.spend, 100);
+  assert.equal(r.compara.spend, 50);
+  assert.equal(r.campanas[0].nombre, "Camp");
+  assert.equal(r.anuncios[0].nombre, "Pieza");
+  assert.equal(r.anuncios[0].imagen, null);
+  assert.ok(llamadas.every((u) => !u.includes("tok")), "el token no viaja en la URL");
+  const sin = await analisisMeta("9", "tok", "2026-10-01", "2026-10-31", null, null, 1, f);
+  assert.equal(sin.compara, null);
 });

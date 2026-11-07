@@ -1,9 +1,9 @@
 // Backend del Portal Elevation.
-// Rutas: GET /callback · POST /webhook · POST /sync · POST /meta-sync
+// Rutas: GET /callback · POST /webhook · POST /sync · POST /meta-sync · POST /analisis
 //        POST /privacy/{store-redact,customer-redact,customers-data-request}
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import {
-  APP_EVENTS, BUYER_FIELDS, campanasMeta, clienteTN, DIAS_HISTORIA, filasCompradores, firmaValida, igualSeguro, insightsMeta,
+  analisisMeta, APP_EVENTS, BUYER_FIELDS, campanasMeta, clienteTN, DIAS_HISTORIA, filasCompradores, firmaValida, igualSeguro, insightsMeta,
   nombreTienda, normalizarOrden, ORDER_EVENTS, proximaVentana, ventanaAtras,
 } from "./lib.ts";
 
@@ -254,6 +254,47 @@ async function sincronizarCampanas(inicio: number, atras: (n: number) => string,
   return n;
 }
 
+// Embudo, campañas y creativos del análisis de resultados. Solo con la clave del equipo.
+const CORS = {
+  "Access-Control-Allow-Origin": new URL(PAGINA).origin,
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "content-type",
+  "Vary": "Origin",
+};
+const responderCors = (status: number, cuerpo: unknown) =>
+  new Response(JSON.stringify(cuerpo), { status, headers: { "Content-Type": "application/json", ...CORS } });
+const esFecha = (s: unknown) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+async function analisis(req: Request) {
+  const b = await req.json().catch(() => ({}));
+  const { data: valida } = await db.rpc("merview_key_ok", { p_key: String(b.key ?? "") });
+  if (valida !== true) return responderCors(401, { error: "clave_invalida" });
+  if (!esFecha(b.desde) || !esFecha(b.hasta) || b.hasta < b.desde) return responderCors(400, { error: "rango_invalido" });
+  const conCompara = esFecha(b.comparaDesde) && esFecha(b.comparaHasta);
+  if (!META_TOKEN) return responderCors(503, { error: "falta_token" });
+  const { data: c } = await db.from("clients").select("meta_accounts").eq("id", String(b.client ?? "")).eq("active", true).maybeSingle();
+  if (!c) return responderCors(404, { error: "cliente_inexistente" });
+  const { data: tc } = await db.from("settings").select("value").eq("key", "usd_ars").maybeSingle();
+  const usd = Number(tc?.value) || 1;
+  const cuentas = (c.meta_accounts ?? []) as string[];
+  const res = await Promise.allSettled(cuentas.map((id) =>
+    analisisMeta(id, META_TOKEN, b.desde, b.hasta, conCompara ? b.comparaDesde : null, conCompara ? b.comparaHasta : null, usd)));
+  const ok = res.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  res.forEach((r, i) => { if (r.status === "rejected") console.error("análisis", cuentas[i], texto(r.reason)); });
+  const suma = (lista: Record<string, number>[]) => {
+    const t: Record<string, number> = {};
+    for (const x of lista) for (const k of Object.keys(x)) t[k] = (t[k] ?? 0) + x[k];
+    return t;
+  };
+  return responderCors(200, {
+    fallaron: res.length - ok.length,
+    periodo: ok.length ? suma(ok.map((x) => x.periodo)) : null,
+    compara: conCompara && ok.length ? suma(ok.map((x) => x.compara ?? {})) : null,
+    campanas: ok.flatMap((x) => x.campanas),
+    anuncios: ok.flatMap((x) => x.anuncios).sort((x, y) => y.compras - x.compras || y.valor - x.valor).slice(0, 10),
+  });
+}
+
 async function privacidad(req: Request, ruta: string) {
   const cuerpo = await req.text();
   if (!await firmaValida(CLIENT_SECRET, cuerpo, req.headers.get("x-linkedstore-hmac-sha256"))) return responder(401);
@@ -275,6 +316,8 @@ Deno.serve(async (req) => {
     if (req.method === "POST" && ruta === "/webhook") return await webhook(req);
     if (req.method === "POST" && ruta === "/sync") return await sync(req);
     if (req.method === "POST" && ruta === "/meta-sync") return await metaSync(req);
+    if (ruta === "/analisis" && req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+    if (ruta === "/analisis" && req.method === "POST") return await analisis(req);
     if (req.method === "POST" && ruta.startsWith("/privacy/")) return await privacidad(req, ruta);
     return responder(404);
   } catch (e) {

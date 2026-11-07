@@ -164,6 +164,20 @@ createServer(async (req, res) => {
     }
     return res.end(JSON.stringify(rc));
   }
+  if (url.pathname === "/functions/v1/tn-app/analisis") {
+    let cuerpo = ""; for await (const c of req) cuerpo += c;
+    const a = JSON.parse(cuerpo);
+    res.setHeader("Content-Type", "application/json");
+    if (a.key !== "prueba") { res.statusCode = 401; return res.end(JSON.stringify({ error: "clave_invalida" })); }
+    const etapa = (k) => ({ spend: 5200000 * k, impresiones: 2400000 * k, clics: 41000 * k, visitas: 33000 * k, carritos: 3900 * k, pagos: 1500 * k, compras: 610 * k, valor: 38000000 * k, mensajes: 40 * k });
+    const pieza = (t, c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600" fill="${c}"/><text x="200" y="300" fill="#fff" font-size="34" text-anchor="middle">${t}</text></svg>`)}`;
+    const anuncio = (i, compras, spend, c) => ({ id: `a${i}`, nombre: `Video prueba ${i} | Colección verano | Reel con un nombre bastante largo`, campana: "Ventas | Catálogo", ...etapa(0), spend, impresiones: spend * 0.4, clics: spend * 0.007, compras, valor: compras * 62000, imagen: i === 4 ? null : pieza(`Pieza ${i}`, c) });
+    return res.end(JSON.stringify({
+      fallaron: 0, periodo: etapa(1), compara: a.comparaDesde ? etapa(0.88) : null,
+      campanas: [["Ventas | Catálogo + contenido | CBO", 0.42], ["Ventas | Remarketing carritos", 0.18], ["Prospecting | Videos nuevos con nombre largo para probar el corte de la fila", 0.22], ["Reconocimiento | Marca", 0.1], ["Mayoristas (B2B)", 0.08]].map(([nombre, k], i) => ({ id: `c${i}`, nombre, ...etapa(k) })),
+      anuncios: [anuncio(1, 142, 720000, "#6D4FA8"), anuncio(2, 98, 510000, "#3F7F73"), anuncio(3, 77, 480000, "#A8643A"), anuncio(4, 51, 310000, "#7A5A9C"), anuncio(5, 34, 205000, "#4C6FA8")],
+    }));
+  }
   if (url.pathname === "/config.js") {
     res.setHeader("Content-Type", "text/javascript");
     return res.end(`window.MERVIEW_CONFIG={supabaseUrl:location.origin,supabaseKey:"x"};`);

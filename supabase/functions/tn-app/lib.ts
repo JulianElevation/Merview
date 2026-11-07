@@ -250,6 +250,92 @@ async function paginasMeta(url0: string, token: string, f: Fetcher) {
   return filas;
 }
 
+/* ---------- Análisis de resultados: se pide a Meta en el momento, no se guarda ---------- */
+
+const accion = (lista: any[] | undefined, tipos: string[]) => {
+  for (const t of tipos) {
+    const hallada = (lista ?? []).find((a: any) => a.action_type === t);
+    if (hallada) return numero(hallada.value) ?? 0;
+  }
+  return 0;
+};
+
+// Etapas del embudo y resultado de una fila de Meta, con los importes en pesos.
+export function resumirMeta(x: Record<string, any>, usdArs = 1) {
+  const f = x.account_currency === "USD" ? usdArs : 1;
+  const a = x.actions;
+  return {
+    spend: (numero(x.spend) ?? 0) * f,
+    impresiones: numero(x.impressions) ?? 0,
+    clics: numero(x.inline_link_clicks) ?? 0,
+    visitas: accion(a, ["omni_landing_page_view", "landing_page_view"]),
+    carritos: accion(a, ["omni_add_to_cart", "add_to_cart"]),
+    pagos: accion(a, ["omni_initiated_checkout", "initiate_checkout"]),
+    compras: accion(a, ["omni_purchase", "purchase"]),
+    valor: accion(x.action_values, ["omni_purchase", "purchase"]) * f,
+    mensajes: accion(a, [MENSAJES]),
+  };
+}
+type Resumen = ReturnType<typeof resumirMeta>;
+export function sumarResumen(filas: Resumen[]): Resumen {
+  const t = resumirMeta({});
+  for (const r of filas) for (const k of Object.keys(t) as (keyof Resumen)[]) t[k] += r[k];
+  return t;
+}
+
+const CAMPOS_RESULTADO = "spend,impressions,inline_link_clicks,actions,action_values,account_currency";
+
+async function insightsNivel(accountId: string, token: string, nivel: string, desde: string, hasta: string, extra: string, f: Fetcher) {
+  const q = new URLSearchParams({
+    level: nivel, limit: "500", fields: `${extra}${CAMPOS_RESULTADO}`,
+    time_range: JSON.stringify({ since: desde, until: hasta }),
+  });
+  return await paginasMeta(`https://graph.facebook.com/${META_VERSION}/act_${accountId}/insights?${q}`, token, f);
+}
+
+// Mismo anuncio en varios conjuntos: se muestra una vez. La imagen sale del que más invirtió.
+export function agruparAnuncios(filas: Record<string, any>[], usdArs = 1) {
+  const m = new Map<string, Resumen & { id: string; nombre: string; campana: string; mayor: number }>();
+  for (const x of filas) {
+    const nombre = String(x.ad_name ?? x.ad_id).trim(), r = resumirMeta(x, usdArs), g = m.get(nombre);
+    if (!g) { m.set(nombre, { ...r, id: String(x.ad_id), nombre, campana: x.campaign_name ?? "", mayor: r.spend }); continue; }
+    if (r.spend > g.mayor) { g.id = String(x.ad_id); g.campana = x.campaign_name ?? g.campana; g.mayor = r.spend; }
+    for (const k of Object.keys(r) as (keyof Resumen)[]) g[k] += r[k];
+  }
+  return [...m.values()].sort((a, b) => b.compras - a.compras || b.valor - a.valor).map(({ mayor: _, ...x }) => x);
+}
+
+// Si falla la imagen, el anuncio se muestra igual, sin pieza.
+async function imagenesAnuncios(ids: string[], token: string, f: Fetcher) {
+  if (!ids.length) return {} as Record<string, string>;
+  const q = new URLSearchParams({ ids: ids.join(","), fields: "creative.thumbnail_width(600).thumbnail_height(600){thumbnail_url,image_url}" });
+  try {
+    const r = await f(`https://graph.facebook.com/${META_VERSION}/?${q}`, { headers: { Authorization: `Bearer ${token}` } });
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) return {} as Record<string, string>;
+    const out: Record<string, string> = {};
+    for (const id of ids) { const c = j[id]?.creative; if (c) out[id] = c.image_url ?? c.thumbnail_url ?? ""; }
+    return out;
+  } catch { return {} as Record<string, string>; }
+}
+
+export async function analisisMeta(accountId: string, token: string, desde: string, hasta: string, comparaDesde: string | null, comparaHasta: string | null, usdArs = 1, f: Fetcher = fetch) {
+  const [cuenta, compara, campanas, anuncios] = await Promise.all([
+    insightsNivel(accountId, token, "account", desde, hasta, "", f),
+    comparaDesde && comparaHasta ? insightsNivel(accountId, token, "account", comparaDesde, comparaHasta, "", f) : Promise.resolve(null),
+    insightsNivel(accountId, token, "campaign", desde, hasta, "campaign_id,campaign_name,", f),
+    insightsNivel(accountId, token, "ad", desde, hasta, "ad_id,ad_name,campaign_name,", f),
+  ]);
+  const top = agruparAnuncios(anuncios, usdArs).slice(0, 10);
+  const imagenes = await imagenesAnuncios(top.filter((x) => x.compras > 0).map((x) => x.id), token, f);
+  return {
+    periodo: sumarResumen(cuenta.map((x) => resumirMeta(x, usdArs))),
+    compara: compara ? sumarResumen(compara.map((x) => resumirMeta(x, usdArs))) : null,
+    campanas: campanas.map((x) => ({ id: String(x.campaign_id), nombre: x.campaign_name ?? String(x.campaign_id), ...resumirMeta(x, usdArs) })),
+    anuncios: top.map((x) => ({ ...x, imagen: imagenes[x.id] ?? null })),
+  };
+}
+
 // Devuelve el gasto por día y el nombre actual de cada campaña: si se renombra, corrige también los días pasados.
 export async function campanasMeta(accountId: string, token: string, desde: string, hasta: string, f: Fetcher = fetch) {
   const base = `https://graph.facebook.com/${META_VERSION}/act_${accountId}`;
