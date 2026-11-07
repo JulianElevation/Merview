@@ -224,7 +224,7 @@ body.con-informe{overflow:hidden}
 .portada h1{margin:0;font-size:56px;font-weight:800;line-height:1.08;color:#221E33}
 .portada h2{margin:10px 0 0;font-size:26px;font-weight:500;color:#6B6780}
 .i-cards{display:grid;gap:12px}
-.i-cards.c1{grid-template-columns:1fr}.i-cards.c2{grid-template-columns:repeat(2,1fr)}.i-cards.c3{grid-template-columns:repeat(3,1fr)}.i-cards.c4{grid-template-columns:repeat(4,1fr)}
+.i-cards.c5{grid-template-columns:repeat(5,1fr)}.i-cards.c5 .i-card b{font-size:25px}.i-cards.c1{grid-template-columns:1fr}.i-cards.c2{grid-template-columns:repeat(2,1fr)}.i-cards.c3{grid-template-columns:repeat(3,1fr)}.i-cards.c4{grid-template-columns:repeat(4,1fr)}
 .i-gap{margin-top:12px}
 .i-card{display:flex;flex-direction:column;gap:3px;padding:16px 18px;border:1px solid #E8E5EF;border-radius:10px;background:#FBFAFD}
 .i-card span{font-size:13.5px;color:#6B6780}
@@ -261,8 +261,32 @@ body.con-informe{overflow:hidden}
 .i-img{position:relative;height:350px;border:1px solid #E8E5EF;border-radius:8px;background:#F4F2F8;overflow:hidden;display:grid;place-items:center;color:#6B6780;font-size:12px}
 .i-img img{width:100%;height:100%;object-fit:contain;display:block}
 .i-cat{width:100%;height:100%;display:block}
-.hoja.modo-slide{width:1411.6px}
-.modo-slide .i-graf{max-width:1017px;margin-left:auto;margin-right:auto}
+/* Slides: 16:9. Letra y gráficos más grandes, para leer en pantalla y aprovechar el ancho. */
+.hoja.modo-slide{width:1411.6px;padding:28px 40px 20px;font-size:17px}
+.modo-slide>header{padding-bottom:10px;margin-bottom:16px}
+.modo-slide>header h2{font-size:36px}.modo-slide>header p{font-size:16px}.modo-slide>header img{height:44px}
+.modo-slide>footer{font-size:13px;margin-top:6px}
+.modo-slide .i-card{padding:12px 20px}.modo-slide .i-card span{font-size:17px}.modo-slide .i-card b{font-size:40px;line-height:1.15}
+.modo-slide .i-card.chica{padding:9px 20px}.modo-slide .i-card.chica b{font-size:27px}.modo-slide .i-var{font-size:15px}
+.modo-slide .i-gap{margin-top:10px}.modo-slide .i-cards{gap:10px}
+.modo-slide .i-cards.c5 .i-card b{font-size:38px}.modo-slide .i-cards.c4 .i-card b{font-size:40px}
+.modo-slide .i-h3{font-size:18px;margin:12px 0 4px}.modo-slide .i-ley{font-size:16px}
+/* Cada gráfico toma justo el espacio que le queda a la hoja: nunca se pasa del pie ni deja un hueco. */
+.modo-slide .hoja-c{display:flex;flex-direction:column}
+.modo-slide .hoja-c>*{flex:none}
+.modo-slide .hoja-c>.i-graf{flex:1 1 0;min-height:0;width:100%;height:auto}
+.hoja .modo-slide .i-tab,.modo-slide .i-tab{font-size:18px}
+.hoja.modo-slide .i-tab th{font-size:16px;padding:10px 14px}.hoja.modo-slide .i-tab td{padding:10px 14px}
+.hoja.modo-slide .i-compacta th,.hoja.modo-slide .i-compacta td{padding:6px 14px}
+.modo-slide .i-corte{grid-template-columns:520px 1fr;gap:40px}
+.modo-slide .i-dos{grid-template-columns:1fr 1fr;gap:40px}
+.modo-slide .i-etapa{padding:21px 26px;font-size:19px}.modo-slide .i-etapa b{font-size:32px}.modo-slide .i-paso{font-size:17px;padding:7px 0}
+.hoja.modo-slide .i-der td,.hoja.modo-slide .i-der th{padding:14px 12px}
+.modo-slide .i-img{height:352px}.modo-slide .i-img em{width:34px;height:34px;font-size:18px}
+.modo-slide .i-pieza h4{font-size:16px;height:42px;margin:8px 0 6px}
+.modo-slide .i-pieza dl div{font-size:16px;padding:4px 0}
+.modo-slide .i-notas{font-size:24px;max-width:none}
+.modo-slide .portada,.portada.modo-slide{padding:60px 70px 30px}.portada.modo-slide>img{height:64px}.portada.modo-slide p{font-size:26px}.portada.modo-slide h1{font-size:84px}.portada.modo-slide h2{font-size:38px}
 .inf-toma{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:3px;border-radius:999px;background:rgba(20,16,32,.82);color:#fff;font-size:11.5px;white-space:nowrap}
 .inf-toma button{width:24px;height:24px;border:0;border-radius:50%;background:transparent;color:#fff;font-size:17px;line-height:1;cursor:pointer}
 .inf-toma button:hover{background:rgba(255,255,255,.2)}

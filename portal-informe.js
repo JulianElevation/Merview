@@ -8,6 +8,7 @@
 const TEMAS = [
   { id: "res", t: "Resultados generales", d: "Inversión, facturación, MER, CAC, ticket y ventas", on: true },
   { id: "emb", t: "Embudo de ventas", d: "De impresiones a compras, con tasas y costos", on: true, meta: true },
+  { id: "cos", t: "Costos por etapa", d: "Costo por clic, visita, carrito, pago iniciado y compra", on: true, meta: true },
   { id: "his", t: "Histórico de inversión, facturación y retorno", d: "Mes a mes", on: true },
   { id: "dia", t: "Evolución diaria", d: "Facturación e inversión por día", on: false },
   { id: "cli", t: "Clientes nuevos vs. recurrentes", d: "Del período y de los últimos 12 meses", on: true, tienda: true },
@@ -228,7 +229,8 @@ function corte(lista, nombre, cab) {
 
 // Dibujo propio para los anuncios de catálogo: Meta no le da las fotos de los productos al portal.
 const ILUSTRACION_CATALOGO = (() => {
-  const v = "#7C3AED", c = "#C9B8F5", r = "#D9578C", o = "#3B3650";
+  // En grises: es una referencia, no tiene que competir con las piezas reales.
+  const v = "#A5A2AE", c = "#D6D4DC", r = "#BDBAC5", o = "#8E8B98";
   const dibujos = [
     `<path d="M28 20 40 14Q50 22 60 14L72 20 84 36 72 44 68 38V78H32V38L28 44 16 36Z" fill="${v}"/>`,
     `<path d="M32 12H68L74 84H56L50 40 44 84H26Z" fill="${o}"/><path d="M32 20H68" stroke="${c}" stroke-width="2"/>`,
@@ -307,6 +309,19 @@ function hojaEmbudo(ctx) {
   ].join("");
   return { titulo: "Embudo de ventas", fuente: `Impresiones, visitas, carritos y pagos: Meta Ads.${conectada ? " Ventas: Tiendanube, órdenes pagadas." : ""}`, cuerpo: `<div class="i-dos"><div class="i-embudo">${bloques}</div>
     <table class="i-tab i-der"><thead><tr><th>Indicador</th><th>${esc(ctx.tituloPer)}</th>${q ? `<th>${esc(mayus(ctx.etq))}</th><th>Var.</th>` : ""}</tr></thead><tbody>${filas}</tbody></table></div>` };
+}
+function hojaCostos(ctx) {
+  const p = ctx.meta?.periodo, q = ctx.meta?.compara, { t, c, conectada, op, etq } = ctx;
+  if (!p || !p.spend) return null;
+  // Igual que en el embudo: todo sale de Meta, salvo la compra, que son las ventas reales de la tienda.
+  const etapas = [["Costo por clic", "Clics", p.clics, p.spend, q?.clics, q?.spend], ["Costo por visita a la web", "Visitas", p.visitas, p.spend, q?.visitas, q?.spend], ["Costo por carrito creado", "Carritos", p.carritos, p.spend, q?.carritos, q?.spend], ["Costo por pago iniciado", "Pagos iniciados", p.pagos, p.spend, q?.pagos, q?.spend]];
+  if (conectada) etapas.push(["Costo por compra", "Ventas", t.ventas, t.tienda, c?.ventas, c?.tienda]);
+  const costo = (n, s) => (n > 0 && s > 0 ? s / n : null);
+  const filas = etapas.map(([nombre, unidad, n, s, nc, sc]) => ({ nombre, unidad, n, costo: costo(n, s), nc, comparado: costo(nc, sc) }));
+  const cards = filas.map((f) => tarjeta(f.nombre, f.costo == null ? "—" : money(f.costo), op.comp ? variacion(f.costo, f.comparado, -1, etq) : "")).join("");
+  const tablaFilas = filas.map((f) => `<tr><td>${esc(f.unidad)}</td><td>${nf0.format(f.n)}</td><td>${f.costo == null ? "—" : money(f.costo)}</td>${op.comp ? `<td>${f.nc == null ? "—" : nf0.format(f.nc)}</td><td>${f.comparado == null ? "—" : money(f.comparado)}</td><td>${variacion(f.costo, f.comparado, -1, "")}</td>` : ""}</tr>`).join("");
+  return { titulo: "Costos por etapa", fuente: `Clics, visitas, carritos y pagos: Meta Ads.${conectada ? " Compras: Tiendanube, órdenes pagadas." : ""}`, cuerpo: `<div class="i-cards c${filas.length}">${cards}</div>
+    <table class="i-tab i-gap"><thead><tr><th>Etapa</th><th>Cantidad</th><th>Costo</th>${op.comp ? `<th>Cantidad ${esc(etq)}</th><th>Costo ${esc(etq)}</th><th>Var.</th>` : ""}</tr></thead><tbody>${tablaFilas}</tbody></table>` };
 }
 function hojaHistorico(ctx) {
   const { rh, iniMes, finMes, b2b, op } = ctx;
@@ -461,9 +476,11 @@ async function hojaASlide(hoja) {
       if (n.nodeType === Node.TEXT_NODE && n.textContent.trim()) {
         const r = document.createRange(); r.selectNodeContents(n);
         const medida = R(r.getBoundingClientRect());
+        // El número de cada pieza va centrado en su círculo.
+        if (tag === "em") { const b = R(caja); medida.x = b.x; medida.w = b.w; medida.y = b.y + (b.h - medida.h) / 2; }
         // El nombre de un anuncio tiene que cortar en su columna: el script de Google ensancha cada caja un 12% más 6 puntos.
         if (tag === "h4") medida.w = (R(caja).w - 6) / 1.12;
-        items.push({ t: "texto", ...medida, txt: n.textContent.trim(), ...tipografia(cs) });
+        items.push({ t: "texto", ...medida, txt: n.textContent.trim(), ...tipografia(cs), ...(tag === "em" ? { align: "center" } : {}) });
       } else if (n.nodeType === Node.ELEMENT_NODE) await visitar(n);
     }
   };
@@ -509,7 +526,7 @@ function mostrarInforme(op, d) {
   if (op.temas.includes("emb") && conectada && meta?.periodo?.pagos > 0 && t.ventas > meta.periodo.pagos) avisos.push("Embudo: las ventas de la tienda superan a los pagos iniciados de Meta, así que esa tasa de paso no se muestra.");
   if (op.comp && c && c.fac === 0 && c.spend === 0) avisos.push("El período de comparación no tiene datos: las variaciones no se muestran.");
   const armar = {
-    res: () => hojaResultados(ctx), emb: () => hojaEmbudo(ctx), his: () => hojaHistorico(ctx), dia: () => hojaDiaria(ctx), cli: () => hojaClientes(ctx),
+    res: () => hojaResultados(ctx), emb: () => hojaEmbudo(ctx), cos: () => hojaCostos(ctx), his: () => hojaHistorico(ctx), dia: () => hojaDiaria(ctx), cli: () => hojaClientes(ctx),
     cre: () => hojaCreativos(ctx), cam: () => hojaCampanas(ctx), top: () => hojaTop(ctx), b2b: () => hojaB2b(ctx),
     pag: () => hojaCorte(ctx, r.pagos, "Métodos de pago", "Método", pagoTxt),
     cuo: () => hojaCorte(ctx, r.cuotas, "Cuotas", "Cuotas", (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`)),
