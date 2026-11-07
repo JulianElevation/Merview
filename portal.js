@@ -31,7 +31,7 @@ function hace(s) {
   if (m < 1440) return `hace ${Math.floor(m / 60)} h`;
   return fechaHora(s);
 }
-const PAGOS = { credit_card: "Tarjeta de crédito", debit_card: "Tarjeta de débito", wire_transfer: "Transferencia", cash: "Efectivo", wallet: "Billetera virtual", boleto: "Boleto", pix: "Pix", ticket: "Pago en efectivo", custom: "Pago acordado", account_money: "Dinero en cuenta", other: "Otros", sin_dato: "Sin dato" };
+const PAGOS = { credit_card: "Tarjeta de crédito", debit_card: "Tarjeta de débito", wire_transfer: "Transferencia", cash: "Efectivo", wallet: "Billetera virtual", boleto: "Boleto", pix: "Pix", ticket: "Pago en efectivo", custom: "Transferencia o personalizado", account_money: "Dinero en cuenta", other: "Otros", sin_dato: "Sin dato" };
 const pagoTxt = (k) => PAGOS[k] || String(k || "—").replace(/_/g, " ");
 
 /* ---------- Fechas ---------- */
@@ -791,7 +791,7 @@ function bloqueB2b(c, spend, fac, inB2b) {
   const conv = tag.reduce((s, x) => s + num(x.messages), 0);
   const fila = (x) => `<tr><td class="nom" style="white-space:normal"><b>${esc(x.nombre)}</b></td><td>${x.b2b ? '<span class="tag ok">B2B</span>' : x.parece_mensajes ? '<span class="tag pend">Sin etiqueta</span>' : '<span class="tag">Tienda</span>'}</td><td>${money(num(x.spend))}</td><td>${nf0.format(num(x.messages))}</td><td class="hm">${num(x.messages) ? money(num(x.spend) / num(x.messages)) : "—"}</td></tr>`;
   return `<section class="bloque"><h2>Campañas B2B y de mensajes</h2>
-    <p class="sub" style="padding:0 16px">Las campañas con <b>(B2B)</b> o <b>(MSJ)</b> en el nombre no cuentan para el MER tienda. Lo que se vende por ese canal no está en la tienda.</p>
+    <p class="sub" style="padding:0 16px">Las campañas con <b>(B2B)</b> o <b>(MSJ)</b> en el nombre no cuentan para el MER tienda. La facturación es la de la tienda: todas las órdenes marcadas como pagadas, por cualquier método.</p>
     <div class="kpis b2b-kpis">${kpi("Inversión B2B", money(inB2b), spend > 0 ? `${pct(inB2b, spend)}% de la inversión` : "", "", "ib2")}${kpi("Conversaciones B2B", nf0.format(conv), conv ? `${money(inB2b / conv)} cada una` : "", "", "msg")}${kpi("MER total", spend > 0 ? merTxt(fac / spend) : "—", "Con toda la inversión", "", "mer")}</div>
     ${faltan.length && !modoCliente ? `<div class="aviso aviso-app" style="margin:0 16px 12px">${faltan.length === 1 ? "1 campaña parece" : `${faltan.length} campañas parecen`} de mensajes y no tiene${faltan.length === 1 ? "" : "n"} la etiqueta. Si no son de tienda, agregale (B2B) o (MSJ) al nombre en Meta.</div>` : ""}
     ${camp.length ? `<div class="tablebox"><table><thead><tr><th>Campaña</th><th>Tipo</th><th>Inversión</th><th>Conversaciones</th><th class="hm">Costo</th></tr></thead><tbody>${camp.map(fila).join("")}</tbody></table></div>` : '<p class="sub" style="padding:0 16px 14px">Trayendo las campañas. Pueden tardar hasta 5 minutos en aparecer.</p>'}</section>`;
