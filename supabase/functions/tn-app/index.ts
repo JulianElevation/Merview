@@ -3,7 +3,7 @@
 //        POST /privacy/{store-redact,customer-redact,customers-data-request}
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import {
-  analisisMeta, APP_EVENTS, BUYER_FIELDS, campanasMeta, clienteTN, DIAS_HISTORIA, filasCompradores, firmaValida, igualSeguro, insightsMeta,
+  analisisMeta, unirProductos, APP_EVENTS, BUYER_FIELDS, campanasMeta, clienteTN, DIAS_HISTORIA, filasCompradores, firmaValida, igualSeguro, insightsMeta,
   nombreTienda, normalizarOrden, ORDER_EVENTS, proximaVentana, ventanaAtras,
 } from "./lib.ts";
 
@@ -292,6 +292,7 @@ async function analisis(req: Request) {
     compara: conCompara && ok.length ? suma(ok.map((x) => x.compara ?? {})) : null,
     campanas: ok.flatMap((x) => x.campanas),
     anuncios: ok.flatMap((x) => x.anuncios).sort((x, y) => y.compras - x.compras || y.valor - x.valor).slice(0, 10),
+    productos: unirProductos(ok.map((x) => x.productos)),
   });
 }
 

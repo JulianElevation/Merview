@@ -390,12 +390,49 @@ async function imagenesAnuncios(ids: string[], token: string, f: Fetcher) {
   return out;
 }
 
+// Meta devuelve "1293019093, Remera Over Basic Arena". Las variantes del mismo producto se suman por nombre.
+export function agruparProductos(filas: Record<string, any>[], usdArs = 1) {
+  const m = new Map<string, Resumen & { nombre: string }>();
+  for (const x of filas) {
+    const nombre = String(x.product_id ?? "").split(", ").slice(1).join(", ").trim();
+    if (!nombre) continue;
+    const r = resumirMeta(x, usdArs), g = m.get(nombre);
+    if (!g) { m.set(nombre, { ...r, nombre }); continue; }
+    for (const k of Object.keys(r) as (keyof Resumen)[]) g[k] += r[k];
+  }
+  return [...m.values()].sort((a, b) => b.clics - a.clics).slice(0, 80);
+}
+export function unirProductos(listas: Record<string, any>[][]) {
+  const m = new Map<string, Record<string, any>>();
+  for (const x of listas.flat()) {
+    const g = m.get(x.nombre);
+    if (!g) { m.set(x.nombre, { ...x }); continue; }
+    for (const k of Object.keys(x)) if (typeof x[k] === "number") g[k] += x[k];
+  }
+  return [...m.values()].sort((a, b) => b.clics - a.clics).slice(0, 80);
+}
+
+// Solo sale de anuncios de catálogo. Si Meta no lo da, el análisis sigue sin este dato.
+async function productosMeta(accountId: string, token: string, desde: string, hasta: string, usdArs: number, f: Fetcher) {
+  const q = new URLSearchParams({
+    level: "account", limit: "500", breakdowns: "product_id", fields: CAMPOS_RESULTADO,
+    time_range: JSON.stringify({ since: desde, until: hasta }),
+  });
+  try {
+    return agruparProductos(await paginasMeta(`https://graph.facebook.com/${META_VERSION}/act_${accountId}/insights?${q}`, token, f), usdArs);
+  } catch (e) {
+    console.error("productos de Meta:", accountId, String((e as Error)?.message ?? e).slice(0, 200));
+    return [];
+  }
+}
+
 export async function analisisMeta(accountId: string, token: string, desde: string, hasta: string, comparaDesde: string | null, comparaHasta: string | null, usdArs = 1, f: Fetcher = fetch) {
-  const [cuenta, compara, campanas, anuncios] = await Promise.all([
+  const [cuenta, compara, campanas, anuncios, productos] = await Promise.all([
     insightsNivel(accountId, token, "account", desde, hasta, "", f),
     comparaDesde && comparaHasta ? insightsNivel(accountId, token, "account", comparaDesde, comparaHasta, "", f) : Promise.resolve(null),
     insightsNivel(accountId, token, "campaign", desde, hasta, "campaign_id,campaign_name,", f),
     insightsNivel(accountId, token, "ad", desde, hasta, "ad_id,ad_name,campaign_name,", f),
+    productosMeta(accountId, token, desde, hasta, usdArs, f),
   ]);
   const top = agruparAnuncios(anuncios, usdArs).slice(0, 10);
   const imagenes = await imagenesAnuncios(top.filter((x) => x.compras > 0).map((x) => x.id), token, f);
@@ -404,6 +441,7 @@ export async function analisisMeta(accountId: string, token: string, desde: stri
     compara: compara ? sumarResumen(compara.map((x) => resumirMeta(x, usdArs))) : null,
     campanas: campanas.map((x) => ({ id: String(x.campaign_id), nombre: x.campaign_name ?? String(x.campaign_id), ...resumirMeta(x, usdArs) })),
     anuncios: top.map((x) => ({ ...x, imagenes: imagenes[x.id]?.imagenes ?? [], vista: imagenes[x.id]?.vista ?? null })),
+    productos,
   };
 }
 

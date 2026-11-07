@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import {
-  agruparAnuncios, analisisMeta, urlDeVistaPrevia, BUYER_FIELDS, campanasMeta, clienteTN, resumirMeta, filasCompradores, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana, ventanaAtras,
+  agruparAnuncios, agruparProductos, analisisMeta, unirProductos, urlDeVistaPrevia, BUYER_FIELDS, campanasMeta, clienteTN, resumirMeta, filasCompradores, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana, ventanaAtras,
 } from "../supabase/functions/tn-app/lib.ts";
 
 const res = (status, body, headers = {}) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers });
@@ -276,4 +276,19 @@ test("un video de Instagram no ofrece el mp4 como imagen", async () => {
 test("la vista previa solo acepta direcciones de Facebook", () => {
   assert.equal(urlDeVistaPrevia('<iframe src="https://malo.com/x"></iframe>'), null);
   assert.equal(urlDeVistaPrevia(undefined), null);
+});
+
+test("los productos de Meta se suman por nombre, con todas sus variantes", () => {
+  const out = agruparProductos([
+    filaMeta({ product_id: "11, Buzo Basic - Negro", inline_link_clicks: "10" }),
+    filaMeta({ product_id: "12, Buzo Basic - Negro", inline_link_clicks: "5" }),
+    filaMeta({ product_id: "13, Remera, con coma", inline_link_clicks: "99" }),
+    filaMeta({ product_id: "0" }),
+  ]);
+  assert.equal(out.length, 2, "sin nombre no cuenta");
+  assert.equal(out[0].nombre, "Remera, con coma");
+  assert.equal(out[1].clics, 15);
+  assert.equal(out[1].compras, 4);
+  const juntos = unirProductos([[{ nombre: "A", clics: 1, compras: 2 }], [{ nombre: "A", clics: 3, compras: 4 }, { nombre: "B", clics: 9, compras: 0 }]]);
+  assert.deepEqual(juntos[1], { nombre: "A", clics: 4, compras: 6 });
 });

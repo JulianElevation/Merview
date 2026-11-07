@@ -14,6 +14,8 @@ const TEMAS = [
   { id: "cli", t: "Clientes nuevos vs. recurrentes", d: "Del período y de los últimos 12 meses", on: true, tienda: true },
   { id: "cre", t: "Creativos ganadores", d: "Los 5 anuncios con más compras, con su pieza", on: true, meta: true },
   { id: "cam", t: "Campañas", d: "Inversión, compras y ROAS por campaña", on: false, meta: true },
+  { id: "des", t: "Productos a destacar", d: "Lo más vendido y lo que mejor convierte", on: true, tienda: true, usaMeta: true },
+  { id: "cnv", t: "Conversión por producto", d: "Clics, carritos y compras de anuncios de catálogo", on: false, meta: true },
   { id: "top", t: "Top productos vendidos", d: "Los 15 más vendidos por unidades", on: true, tienda: true },
   { id: "pag", t: "Métodos de pago", d: "Ventas y facturación por método", on: true, tienda: true },
   { id: "cuo", t: "Cuotas", d: "Ventas y facturación por cantidad de cuotas", on: true, tienda: true },
@@ -128,7 +130,7 @@ async function generarInforme() {
   const boton = $("infSi"); boton.disabled = true; boton.textContent = "Generando…"; err.hidden = true;
   try {
     const finMes = b.slice(0, 7), iniMes = op.his === "anio" ? `${b.slice(0, 4)}-01` : mesAntes(finMes, 5);
-    const conMeta = temas.some((t) => TEMAS.find((x) => x.id === t)?.meta);
+    const conMeta = temas.some((t) => { const x = TEMAS.find((y) => y.id === t); return x?.meta || x?.usaMeta; });
     // De a una: juntas pueden pasar el límite de 3 s de la base.
     const metaPedido = conMeta ? pedirMeta(op.client, a, b, op.comp).catch((e) => { console.error("análisis Meta", e.message); return null; }) : null;
     const r = await rpc("portal_cliente", { p_client: op.client, p_since: a, p_until: b, p_limit: 1, p_offset: 0 });
@@ -385,6 +387,36 @@ function hojaCampanas(ctx) {
   return { titulo: "Campañas", fuente: F_META + extra, cuerpo: `<table class="i-tab i-campanas"><thead><tr><th>Campaña</th><th>Inversión</th><th>% inv.</th><th>Compras</th><th>Costo x compra</th><th>Facturación</th><th>ROAS</th></tr></thead><tbody>
     ${top.map((x) => `<tr><td class="i-nom">${esc(x.nombre)}</td><td>${money(x.spend)}</td><td>${tasa(x.spend, total)}</td><td>${nf0.format(x.compras)}</td><td>${x.compras ? money(x.spend / x.compras) : "—"}</td><td>${money(x.valor)}</td><td>${merTxt(x.valor / x.spend)}</td></tr>`).join("")}</tbody></table>` };
 }
+const claveProducto = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+const F_CATALOGO = "Meta Ads, anuncios de catálogo: clics y compras atribuidas por el píxel.";
+// Con menos que esto, una tasa alta es casualidad: no alcanza para destacar un producto.
+const MIN_CLICS = 50, MIN_COMPRAS = 3;
+const conversionFirme = (x) => x.clics >= MIN_CLICS && x.compras >= MIN_COMPRAS;
+function hojaDestacar(ctx) {
+  const vendidos = ctx.r.productos || [], meta = ctx.meta?.productos || [];
+  const porNombre = new Map(meta.map((x) => [claveProducto(x.nombre), x]));
+  const masVendidos = vendidos.slice(0, 5);
+  // "Alta" es contra el promedio de la cuenta: si no, con pocos productos cualquiera entraría.
+  const totalClics = meta.reduce((s, x) => s + x.clics, 0), promedio = totalClics > 0 ? meta.reduce((s, x) => s + x.compras, 0) / totalClics : 0;
+  const mejorConv = meta.filter((x) => conversionFirme(x) && x.compras / x.clics > promedio).sort((a, b) => b.compras / b.clics - a.compras / a.clics).slice(0, 5);
+  if (!masVendidos.length && !mejorConv.length) return null;
+  const filas = new Map();
+  masVendidos.forEach((x) => { const k = claveProducto(x.nombre); filas.set(k, { nombre: x.nombre, unidades: num(x.unidades), total: num(x.total), vendido: true, m: porNombre.get(k) }); });
+  mejorConv.forEach((x) => {
+    const k = claveProducto(x.nombre), f = filas.get(k), v = vendidos.find((y) => claveProducto(y.nombre) === k);
+    if (f) f.conv = true; else filas.set(k, { nombre: x.nombre, unidades: v ? num(v.unidades) : null, total: v ? num(v.total) : null, conv: true, m: x });
+  });
+  const lista = [...filas.values()].sort((a, b) => Number(!!(b.vendido && b.conv)) - Number(!!(a.vendido && a.conv)) || (b.unidades ?? -1) - (a.unidades ?? -1));
+  const motivo = (f) => (f.vendido && f.conv ? "Más vendido y alta conversión" : f.vendido ? "Más vendido" : "Alta conversión");
+  return { titulo: "Productos a destacar", fuente: `Ventas: Tiendanube, órdenes pagadas. ${mejorConv.length ? `Conversión: ${F_CATALOGO} Alta conversión: por encima del promedio (${tasa(promedio, 1)}), con al menos ${MIN_CLICS} clics y ${MIN_COMPRAS} compras.` : ""}`.trim(), cuerpo: `<table class="i-tab i-campanas"><thead><tr><th class="i-nom">Producto</th><th class="i-nom">Por qué</th><th>Unidades</th><th>Importe</th><th>Clics</th><th>Compras</th><th>Clic a compra</th></tr></thead><tbody>
+    ${lista.map((f) => `<tr><td class="i-nom">${esc(f.nombre)}</td><td class="i-nom">${esc(motivo(f))}</td><td>${f.unidades == null ? "—" : nf0.format(f.unidades)}</td><td>${f.total == null ? "—" : money(f.total)}</td><td>${f.m ? nf0.format(f.m.clics) : "—"}</td><td>${f.m ? nf0.format(f.m.compras) : "—"}</td><td>${f.m ? tasa(f.m.compras, f.m.clics) : "—"}</td></tr>`).join("")}</tbody></table>` };
+}
+function hojaConversion(ctx) {
+  const lista = (ctx.meta?.productos || []).filter((x) => x.clics >= 20).sort((a, b) => b.compras - a.compras || b.clics - a.clics).slice(0, 15);
+  if (!lista.length) return null;
+  return { titulo: "Conversión por producto", fuente: `${F_CATALOGO} Solo productos con al menos 20 clics.`, cuerpo: `<table class="i-tab i-compacta"><thead><tr><th class="i-nom">Producto</th><th>Inversión</th><th>Clics</th><th>Carritos</th><th>Clic a carrito</th><th>Compras</th><th>Clic a compra</th><th>Costo x compra</th></tr></thead><tbody>
+    ${lista.map((x) => `<tr><td class="i-nom">${esc(x.nombre)}</td><td>${money(x.spend)}</td><td>${nf0.format(x.clics)}</td><td>${nf0.format(x.carritos)}</td><td>${tasa(x.carritos, x.clics)}</td><td>${nf0.format(x.compras)}</td><td>${tasa(x.compras, x.clics)}</td><td>${x.compras ? money(x.spend / x.compras) : "—"}</td></tr>`).join("")}</tbody></table>` };
+}
 function hojaTop(ctx) {
   const p = ctx.r.productos || [];
   if (!p.length) return null;
@@ -530,10 +562,11 @@ function mostrarInforme(op, d) {
   if (meta?.fallaron) avisos.push(`${meta.fallaron} cuenta(s) de Meta no devolvieron datos: Embudo, Creativos y Campañas pueden quedar incompletos.`);
   if ((r.tiendas || []).some((x) => x.conectada && !x.buyers_done)) avisos.push("El historial de compradores todavía está cargando: Clientes nuevos y CAC pueden no ser definitivos.");
   if (op.temas.includes("emb") && conectada && meta?.periodo?.pagos > 0 && t.ventas > meta.periodo.pagos) avisos.push("Embudo: las ventas de la tienda superan a los pagos iniciados de Meta, así que esa tasa de paso no se muestra.");
+  if (op.temas.includes("des") && meta && !(meta.productos || []).length) avisos.push("Productos a destacar: esta cuenta no tiene datos de anuncios de catálogo, así que sale solo con lo más vendido.");
   if (op.comp && c && c.fac === 0 && c.spend === 0) avisos.push("El período de comparación no tiene datos: las variaciones no se muestran.");
   const armar = {
     res: () => hojaResultados(ctx), emb: () => hojaEmbudo(ctx), cos: () => hojaCostos(ctx), his: () => hojaHistorico(ctx), dia: () => hojaDiaria(ctx), cli: () => hojaClientes(ctx),
-    cre: () => hojaCreativos(ctx), cam: () => hojaCampanas(ctx), top: () => hojaTop(ctx), b2b: () => hojaB2b(ctx),
+    cre: () => hojaCreativos(ctx), cam: () => hojaCampanas(ctx), des: () => hojaDestacar(ctx), cnv: () => hojaConversion(ctx), top: () => hojaTop(ctx), b2b: () => hojaB2b(ctx),
     pag: () => hojaCorte(ctx, r.pagos, "Métodos de pago", "Método", pagoTxt),
     cuo: () => hojaCorte(ctx, r.cuotas, "Cuotas", "Cuotas", (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`)),
     env: () => hojaCorte(ctx, r.envios, "Métodos de envío", "Envío", (k) => k),
