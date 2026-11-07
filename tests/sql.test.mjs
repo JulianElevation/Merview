@@ -40,6 +40,7 @@ await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_agencia.sql"
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_agencia_12h.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_b2b.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_solo_b2b.sql"), "utf8"));
+await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_historico.sql"), "utf8"));
 console.log("ok  la migración corre completa");
 
 const hoy = (await q(`select (now() at time zone 'America/Argentina/Buenos_Aires')::date::text d`))[0].d;
@@ -324,6 +325,10 @@ const conPrevio = (await q(`select public.portal_cliente('clave','a',$1::date,$1
 assert.equal(Number(conPrevio.prev.spend_b2b), 0, "el período anterior de un día no tiene B2B");
 const semana = (await q(`select public.portal_cliente('clave','a',$1::date,$2::date) r`, [dia(7), hoy]))[0].r;
 assert.equal(Number(semana.prev.spend_b2b), 10, "el período anterior separa su B2B");
+const hist = (await q(`select public.portal_historico('clave','a',$1::date,$2::date) r`, [dia(7), hoy]))[0].r;
+assert.equal(Math.round(hist.dias.reduce((s, d) => s + Number(d.spend_b2b), 0)), Math.round(Number(semana.dias.reduce((s, d) => s + Number(d.spend_b2b), 0))), "el histórico separa lo mismo que la vista de cliente");
+assert.equal(hist.dias.reduce((s, d) => s + Number(d.revenue), 0), semana.dias.reduce((s, d) => s + Number(d.revenue), 0), "el histórico da la misma facturación");
+await assert.rejects(q(`select public.portal_historico('mala','a',$1::date,$2::date)`, [dia(7), hoy]), /clave_invalida/);
 const agB = ficha(await ag(), "a");
 assert.ok(Number(agB.inv_7) >= 0, "la caída de MER usa la inversión sin B2B");
 // Permisos

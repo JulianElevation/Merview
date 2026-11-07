@@ -221,7 +221,7 @@ test("el análisis trae cuenta, comparación, campañas y anuncios; sin imagen n
   const f = async (url) => {
     llamadas.push(url);
     const u = new URL(url);
-    if (u.searchParams.has("ids")) return res(500, { error: { message: "no" } });
+    if (!u.searchParams.has("time_range")) return res(500, { error: { message: "no" } });
     const rango = JSON.parse(u.searchParams.get("time_range"));
     const nivel = u.searchParams.get("level");
     if (nivel === "account") return res(200, { data: [filaMeta({ spend: rango.since === "2026-09-01" ? "50" : "100" })] });
@@ -237,4 +237,20 @@ test("el análisis trae cuenta, comparación, campañas y anuncios; sin imagen n
   assert.ok(llamadas.every((u) => !u.includes("tok")), "el token no viaja en la URL");
   const sin = await analisisMeta("9", "tok", "2026-10-01", "2026-10-31", null, null, 1, f);
   assert.equal(sin.compara, null);
+});
+
+test("la imagen se pide por anuncio y el tamaño va sobre la pieza", async () => {
+  const f = async (url) => {
+    const u = new URL(url);
+    assert.ok(!u.searchParams.has("ids"), "Meta ya no acepta ids");
+    if (u.searchParams.get("fields") === "creative{id}") return res(200, { id: "a1", creative: { id: "p1" } });
+    if (u.pathname.endsWith("/p1")) {
+      assert.equal(u.searchParams.get("thumbnail_width"), "600");
+      return res(200, { id: "p1", thumbnail_url: "https://img/chica.jpg" });
+    }
+    const nivel = u.searchParams.get("level");
+    return res(200, { data: nivel === "ad" ? [filaMeta({ ad_id: "a1", ad_name: "Pieza" })] : [filaMeta({ campaign_id: "c1" })] });
+  };
+  const r = await analisisMeta("9", "tok", "2026-10-01", "2026-10-31", null, null, 1, f);
+  assert.equal(r.anuncios[0].imagen, "https://img/chica.jpg");
 });

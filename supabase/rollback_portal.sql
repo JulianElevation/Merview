@@ -6,6 +6,7 @@ do $$ begin
   end if;
 end $$;
 update public.clients set kind = 'leads' where id = 'vanskap';
+drop function if exists public.portal_historico(text,text,date,date);
 drop function if exists public.portal_b2b_marcar(text,text,boolean);
 drop function if exists public.portal_alta_cliente(text,text,boolean,text,text,date,text);
 drop function if exists public.portal_reactivar_cliente(text,text,date,text);

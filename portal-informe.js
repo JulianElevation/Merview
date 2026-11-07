@@ -128,12 +128,12 @@ async function generarInforme() {
   try {
     const finMes = b.slice(0, 7), iniMes = op.his === "anio" ? `${b.slice(0, 4)}-01` : mesAntes(finMes, 5);
     const conMeta = temas.some((t) => TEMAS.find((x) => x.id === t)?.meta);
-    const [r, rc, rh, meta] = await Promise.all([
-      rpc("portal_cliente", { p_client: op.client, p_since: a, p_until: b, p_limit: 1, p_offset: 0 }),
-      op.comp ? rpc("portal_cliente", { p_client: op.client, p_since: op.comp.a, p_until: op.comp.b, p_limit: 1, p_offset: 0 }) : null,
-      temas.includes("his") ? rpc("portal_cliente", { p_client: op.client, p_since: `${iniMes}-01`, p_until: b, p_limit: 1, p_offset: 0 }) : null,
-      conMeta ? pedirMeta(op.client, a, b, op.comp).catch((e) => { console.error("análisis Meta", e.message); return null; }) : null,
-    ]);
+    // De a una: juntas pueden pasar el límite de 3 s de la base.
+    const metaPedido = conMeta ? pedirMeta(op.client, a, b, op.comp).catch((e) => { console.error("análisis Meta", e.message); return null; }) : null;
+    const r = await rpc("portal_cliente", { p_client: op.client, p_since: a, p_until: b, p_limit: 1, p_offset: 0 });
+    const rc = op.comp ? await rpc("portal_cliente", { p_client: op.client, p_since: op.comp.a, p_until: op.comp.b, p_limit: 1, p_offset: 0 }) : null;
+    const rh = temas.includes("his") ? await rpc("portal_historico", { p_client: op.client, p_since: `${iniMes}-01`, p_until: b }) : null;
+    const meta = await metaPedido;
     $("dlgInf").close();
     mostrarInforme(op, { r, rc, rh, meta, conMeta, iniMes, finMes });
   } catch (e) {

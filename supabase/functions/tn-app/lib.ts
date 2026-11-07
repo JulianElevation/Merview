@@ -307,16 +307,26 @@ export function agruparAnuncios(filas: Record<string, any>[], usdArs = 1) {
 
 // Si falla la imagen, el anuncio se muestra igual, sin pieza.
 async function imagenesAnuncios(ids: string[], token: string, f: Fetcher) {
-  if (!ids.length) return {} as Record<string, string>;
-  const q = new URLSearchParams({ ids: ids.join(","), fields: "creative.thumbnail_width(600).thumbnail_height(600){thumbnail_url,image_url}" });
-  try {
-    const r = await f(`https://graph.facebook.com/${META_VERSION}/?${q}`, { headers: { Authorization: `Bearer ${token}` } });
+  const out: Record<string, string> = {};
+  if (!ids.length) return out;
+  const pedir = async (nodo: string, params: Record<string, string>) => {
+    const r = await f(`https://graph.facebook.com/${META_VERSION}/${nodo}?${new URLSearchParams(params)}`, { headers: { Authorization: `Bearer ${token}` } });
     const j: any = await r.json().catch(() => ({}));
-    if (!r.ok || j.error) return {} as Record<string, string>;
-    const out: Record<string, string> = {};
-    for (const id of ids) { const c = j[id]?.creative; if (c) out[id] = c.image_url ?? c.thumbnail_url ?? ""; }
-    return out;
-  } catch { return {} as Record<string, string>; }
+    if (!r.ok || j.error) throw new Error(j.error?.message ?? `meta: HTTP ${r.status}`);
+    return j;
+  };
+  // De a uno: Meta ya no acepta pedir varios juntos, y así uno que falla no arrastra al resto.
+  await Promise.all(ids.map(async (id) => {
+    try {
+      const pieza = (await pedir(id, { fields: "creative{id}" })).creative?.id;
+      if (!pieza) return;
+      const c = await pedir(pieza, { fields: "image_url,thumbnail_url", thumbnail_width: "600", thumbnail_height: "600" });
+      if (c.image_url || c.thumbnail_url) out[id] = c.image_url ?? c.thumbnail_url;
+    } catch (e) {
+      console.error("imagen de anuncio:", id, String((e as Error)?.message ?? e).slice(0, 200));
+    }
+  }));
+  return out;
 }
 
 export async function analisisMeta(accountId: string, token: string, desde: string, hasta: string, comparaDesde: string | null, comparaHasta: string | null, usdArs = 1, f: Fetcher = fetch) {
