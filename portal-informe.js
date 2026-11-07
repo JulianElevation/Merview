@@ -480,7 +480,13 @@ async function hojaASlide(hoja) {
         if (tag === "em") { const b = R(caja); medida.x = b.x; medida.w = b.w; medida.y = b.y + (b.h - medida.h) / 2; }
         // El nombre de un anuncio tiene que cortar en su columna: el script de Google ensancha cada caja un 12% más 6 puntos.
         if (tag === "h4") medida.w = (R(caja).w - 6) / 1.12;
-        items.push({ t: "texto", ...medida, txt: n.textContent.trim(), ...tipografia(cs), ...(tag === "em" ? { align: "center" } : {}) });
+        // Un nombre muy largo se corta con puntos suspensivos también en Slides, para que no pise la columna siguiente.
+        let txt = n.textContent.trim();
+        if (cs.textOverflow === "ellipsis" && el.scrollWidth > el.clientWidth) {
+          txt = txt.slice(0, Math.floor((txt.length * el.clientWidth) / el.scrollWidth) - 2).trimEnd() + "…";
+          medida.w = Math.min(medida.w, (el.clientWidth * k - 6) / 1.12);
+        }
+        items.push({ t: "texto", ...medida, txt, ...tipografia(cs), ...(tag === "em" ? { align: "center" } : {}) });
       } else if (n.nodeType === Node.ELEMENT_NODE) await visitar(n);
     }
   };
