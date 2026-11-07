@@ -155,7 +155,7 @@ const tarjeta = (t, v, extra = "", chica = false) => `<div class="i-card${chica 
 const leyenda = (series) => `<div class="i-ley">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.nombre)}</span>`).join("")}</div>`;
 
 // Columnas agrupadas en una sola escala. Con muchos días no se rotula cada barra, para que se lea.
-function columnas(etiquetas, series, { alto = 260, rotulos = etiquetas.length <= 14 } = {}) {
+function columnas(etiquetas, series, { alto = 260, rotulos = etiquetas.length <= 35 } = {}) {
   const W = 1040, H = alto, sup = 26, inf = 26, izq = 8, n = etiquetas.length, plot = H - sup - inf;
   const max = Math.max(...series.flatMap((s) => s.valores), 1), grupo = (W - izq) / Math.max(n, 1);
   const anchoB = Math.min(38, Math.max(4, (grupo * 0.74) / series.length - 2));
@@ -166,7 +166,7 @@ function columnas(etiquetas, series, { alto = 260, rotulos = etiquetas.length <=
     series.forEach((s, j) => {
       const v = s.valores[i] || 0, h = Math.max(v > 0 ? 2 : 0, (v / max) * plot), x = x0 + j * (anchoB + 2), y = H - inf - h;
       if (h) g += barra(x, y, anchoB, h, s.color);
-      if (rotulos && v > 0) g += `<text x="${x + anchoB / 2}" y="${y - 6}" text-anchor="middle" font-size="${series.length > 1 && n > 8 ? 10 : 12}" fill="#3B3650">${esc(corto(v).replace("$ ", ""))}</text>`;
+      if (rotulos && v > 0) g += `<text x="${x + anchoB / 2}" y="${y - 6}" text-anchor="middle" font-size="${n > 16 || (series.length > 1 && n > 8) ? 10 : 12}" fill="#3B3650">${esc(corto(v).replace("$ ", ""))}</text>`;
     });
     if (n <= 16 || i % Math.ceil(n / 16) === 0) g += `<text x="${izq + i * grupo + grupo / 2}" y="${H - 8}" text-anchor="middle" font-size="12" fill="#6B6780">${esc(et)}</text>`;
   });
@@ -178,22 +178,46 @@ function apiladas(etiquetas, abajo, arriba) {
   let g = `<line x1="0" x2="${W}" y1="${H - inf}" y2="${H - inf}" stroke="#D8D4E2"/>`;
   etiquetas.forEach((et, i) => {
     const x = i * grupo + (grupo - ancho) / 2, a = abajo.valores[i] || 0, b = arriba.valores[i] || 0, ha = (a / max) * plot, hb = (b / max) * plot, ya = H - inf - ha, yb = ya - hb - (hb ? 2 : 0);
+    // El dato va adentro del tramo; si el tramo es muy bajo, al costado.
+    const dato = (v, y, h, color) => (!v ? "" : h >= 15
+      ? `<text x="${x + ancho / 2}" y="${y + h / 2 + 4}" text-anchor="middle" font-size="11.5" font-weight="600" fill="${color}">${nf0.format(v)}</text>`
+      : `<text x="${x + ancho + 4}" y="${y + h / 2 + 4}" font-size="10.5" fill="#3B3650">${nf0.format(v)}</text>`);
     if (ha) g += `<rect x="${x}" y="${ya}" width="${ancho}" height="${ha}" fill="${abajo.color}"/>`;
     if (hb) g += `<rect x="${x}" y="${yb}" width="${ancho}" height="${hb}" rx="3" fill="${arriba.color}"/>`;
-    if (a + b) g += `<text x="${x + ancho / 2}" y="${yb - 6}" text-anchor="middle" font-size="12" fill="#3B3650">${nf0.format(a + b)}</text>`;
+    g += dato(a, ya, ha, abajo.tinta) + dato(b, yb, hb, arriba.tinta);
+    if (a + b) g += `<text x="${x + ancho / 2}" y="${yb - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#221E33">${nf0.format(a + b)}</text>`;
     g += `<text x="${x + ancho / 2}" y="${H - 8}" text-anchor="middle" font-size="12" fill="#6B6780">${esc(et)}</text>`;
   });
   return `<svg class="i-graf" viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`;
 }
 function torta(filas) {
-  const total = filas.reduce((s, f) => s + f.total, 0) || 1, R = 72, C = 2 * Math.PI * R;
-  let ang = 0, arcos = "";
-  filas.forEach((f) => { const l = (f.total / total) * C; arcos += `<circle cx="100" cy="100" r="${R}" fill="none" stroke="${f.color}" stroke-width="30" stroke-dasharray="${Math.max(0, l - 2)} ${C - Math.max(0, l - 2)}" stroke-dashoffset="${-ang}" transform="rotate(-90 100 100)"/>`; ang += l; });
-  return `<svg class="i-torta" viewBox="0 0 200 200" role="img">${arcos}</svg>`;
+  const total = filas.reduce((s, f) => s + f.total, 0) || 1, R = 68, C = 2 * Math.PI * R;
+  let ang = 0, arcos = "", textos = "", previo = null;
+  filas.forEach((f) => {
+    const l = (f.total / total) * C, parte = f.total / total, medio = ((ang + l / 2) / C) * 2 * Math.PI;
+    arcos += `<circle cx="100" cy="100" r="${R}" fill="none" stroke="${f.color}" stroke-width="42" stroke-dasharray="${Math.max(0, l - 2)} ${C - Math.max(0, l - 2)}" stroke-dashoffset="${-ang}" transform="rotate(-90 100 100)"/>`;
+    ang += l;
+    if (parte < 0.005) return;
+    const etq = nf1.format(parte * 100) + "%";
+    const pos = (r) => [100 + r * Math.sin(medio), 100 - r * Math.cos(medio)];
+    if (parte >= 0.07) {
+      const [x, y] = pos(R), tinta = f.color === COL[2] || f.otros ? "#221E33" : "#fff";
+      textos += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="${tinta}">${etq}</text>`;
+    } else {
+      // Porción chica: el dato afuera, y si choca con el anterior, un poco más lejos.
+      let r = 103, [x, y] = pos(r);
+      while (previo && Math.hypot(x - previo[0], y - previo[1]) < 13 && r < 130) { r += 7; [x, y] = pos(r); }
+      previo = [x, y];
+      textos += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9.5" font-weight="600" fill="#3B3650">${etq}</text>`;
+    }
+  });
+  return `<svg class="i-torta" viewBox="-24 -24 248 248" role="img">${arcos}${textos}</svg>`;
 }
 function corte(lista, nombre, cab) {
   const ord = [...lista].map((x) => ({ nombre: nombre(x.k), ventas: num(x.ventas), total: num(x.total) })).sort((a, b) => b.total - a.total);
-  const top = ord.slice(0, 5), resto = ord.slice(5);
+  // "Otros" va siempre al final y una sola vez, aunque la tienda tenga un método con ese nombre.
+  const sinOtros = ord.filter((x) => x.nombre !== "Otros"), top = sinOtros.slice(0, 5);
+  const resto = [...sinOtros.slice(5), ...ord.filter((x) => x.nombre === "Otros")];
   if (resto.length) top.push({ nombre: "Otros", ventas: resto.reduce((s, x) => s + x.ventas, 0), total: resto.reduce((s, x) => s + x.total, 0), otros: true });
   const filas = top.map((f, i) => ({ ...f, color: f.otros ? COL_OTROS : COL[i] }));
   const total = filas.reduce((s, f) => s + f.total, 0), tv = filas.reduce((s, f) => s + f.ventas, 0);
@@ -231,7 +255,7 @@ function hojaResultados(ctx) {
   ];
   if (b2b) chicas.push(tarjeta("MER total", merTxt(t.merTotal), v(t.merTotal, c?.merTotal, 1), true));
   const dias = completar(ctx.r.dias || [], ctx.op.a, ctx.op.b);
-  const diaria = dias.length > 1 && dias.length <= 62 ? `<h3 class="i-h3">Facturación por día</h3>${columnas(dias.map((x) => ddmm(x.day)), [{ nombre: "Facturación", color: COL[0], valores: dias.map((x) => num(x.revenue)) }], { alto: 170, rotulos: dias.length <= 16 })}` : "";
+  const diaria = dias.length > 1 && dias.length <= 62 ? `<h3 class="i-h3">Facturación por día</h3>${columnas(dias.map((x) => ddmm(x.day)), [{ nombre: "Facturación", color: COL[0], valores: dias.map((x) => num(x.revenue)) }], { alto: 170 })}` : "";
   return { titulo: "Resultados generales", fuente: F_MIX + (b2b ? " MER tienda: facturación sobre la inversión sin las campañas (B2B)." : ""), cuerpo: `<div class="i-cards c3">${principales.join("")}${secundarias.join("")}</div><div class="i-cards c${chicas.length} i-gap">${chicas.join("")}</div>${diaria}` };
 }
 function hojaEmbudo(ctx) {
@@ -291,7 +315,7 @@ function hojaDiaria(ctx) {
   const et = d.map((x) => ddmm(x.day));
   if (!d.some((x) => num(x.revenue) > 0)) {
     return { titulo: "Evolución diaria", fuente: "Meta Ads.", cuerpo: `<h3 class="i-h3">Inversión por día</h3>${columnas(et, [{ nombre: "Inversión", color: COL[0], valores: d.map((x) => num(x.spend)) }], { alto: 240 })}
-      <h3 class="i-h3">Conversaciones por día</h3>${columnas(et.map((x) => x), [{ nombre: "Conversaciones", color: COL_INV, valores: d.map((x) => num(x.messages)) }], { alto: 240, rotulos: false })}` };
+      <h3 class="i-h3">Conversaciones por día</h3>${columnas(et.map((x) => x), [{ nombre: "Conversaciones", color: COL_INV, valores: d.map((x) => num(x.messages)) }], { alto: 240 })}` };
   }
   return { titulo: "Evolución diaria", fuente: F_MIX, cuerpo: `<h3 class="i-h3">Facturación por día</h3>${columnas(et, [{ nombre: "Facturación", color: COL[0], valores: d.map((x) => num(x.revenue)) }], { alto: 240 })}
     <h3 class="i-h3">Inversión por día</h3>${columnas(et, [{ nombre: "Inversión", color: COL_INV, valores: d.map((x) => num(x.spend)) }], { alto: 240 })}` };
@@ -302,22 +326,22 @@ function hojaClientes(ctx) {
   if (!tv) return null;
   const v = (a, b) => (op.comp ? variacion(a, b, 1, etq) : "");
   const meses = (r.meses || []).filter((m) => m.mes <= op.b.slice(0, 7));
-  const s1 = { nombre: "Nuevos", color: COL[0], valores: meses.map((m) => num(m.nuevos)) }, s2 = { nombre: "Recurrentes", color: "#C9B8F5", valores: meses.map((m) => num(m.recurrentes)) };
+  const s1 = { nombre: "Nuevos", color: COL[0], tinta: "#fff", valores: meses.map((m) => num(m.nuevos)) }, s2 = { nombre: "Recurrentes", color: "#C9B8F5", tinta: "#2A2540", valores: meses.map((m) => num(m.recurrentes)) };
   const ultimo = meses.at(-1)?.mes, parcial = ultimo === hoyBA().slice(0, 7);
   return { titulo: "Clientes nuevos vs. recurrentes", fuente: F_TIENDA + (parcial ? " * Mes en curso." : ""), cuerpo: `<div class="i-cards c4">
     ${tarjeta("Ventas a clientes nuevos", nf0.format(num(n.ventas)), v(t.nuevos, c?.nuevos))}
     ${tarjeta("Ventas a recurrentes", nf0.format(num(rec.ventas)), v(t.recurrentes, c?.recurrentes))}
     ${tarjeta("Facturación de nuevos", money(num(n.total)), `<small class="i-var neu">${tasa(num(n.total), tf)} de la facturación</small>`)}
     ${tarjeta("Facturación de recurrentes", money(num(rec.total)), `<small class="i-var neu">${tasa(num(rec.total), tf)} de la facturación</small>`)}</div>
-    <h3 class="i-h3">Últimos 12 meses</h3>${leyenda([s1, s2])}${apiladas(meses.map((m) => mesTxt(m.mes) + (parcial && m.mes === ultimo ? "*" : "")), s1, s2)}` };
+    <h3 class="i-h3">Últimos 12 meses</h3>${leyenda([s1, s2])}${apiladas(meses.map((m) => mesTxt(m.mes) + (parcial && m.mes === ultimo ? "*" : "")), s2, s1)}` };
 }
 function hojaCreativos(ctx) {
   const lista = (ctx.meta?.anuncios || []).filter((x) => !/\(\s*b2b\s*\)/i.test(x.campana || "") && x.compras > 0);
   if (!lista.length) return null;
   // Con menos de 3 compras la muestra es chica: esos entran solo si no alcanza con el resto.
   const firmes = lista.filter((x) => x.compras >= 3), top = (firmes.length >= 3 ? firmes : lista).slice(0, 5);
-  const fichas = top.map((x, i) => `<article class="i-pieza"><div class="i-img">${x.imagen ? `<img src="${esc(x.imagen)}" alt="" referrerpolicy="no-referrer">` : "<span>Sin vista previa</span>"}<em>${i + 1}</em></div>
-    <h4>${esc(x.nombre)}</h4><dl><div><dt>Compras</dt><dd>${nf0.format(x.compras)}</dd></div><div><dt>ROAS</dt><dd>${x.spend > 0 ? merTxt(x.valor / x.spend) : "—"}</dd></div><div><dt>Inversión</dt><dd>${money(x.spend)}</dd></div><div><dt>Facturación</dt><dd>${money(x.valor)}</dd></div><div><dt>Costo x compra</dt><dd>${money(x.spend / x.compras)}</dd></div><div><dt>CTR</dt><dd>${tasa(x.clics, x.impresiones)}</dd></div></dl></article>`).join("");
+  const fichas = top.map((x, i) => { const imgs = x.imagenes || []; return `<article class="i-pieza"><div class="i-img" data-imgs="${esc(JSON.stringify(imgs))}" data-i="0">${imgs.length ? `<img src="${esc(imgs[0])}" alt="" referrerpolicy="no-referrer">` : "<span>Sin vista previa</span>"}<em>${i + 1}</em>${imgs.length > 1 ? `<div class="inf-toma"><button type="button" data-toma="-1" aria-label="Toma anterior">‹</button><span>1/${imgs.length}</span><button type="button" data-toma="1" aria-label="Toma siguiente">›</button></div>` : ""}</div>
+    <h4>${esc(x.nombre)}</h4><dl><div><dt>Compras</dt><dd>${nf0.format(x.compras)}</dd></div><div><dt>ROAS</dt><dd>${x.spend > 0 ? merTxt(x.valor / x.spend) : "—"}</dd></div><div><dt>Inversión</dt><dd>${money(x.spend)}</dd></div><div><dt>Facturación</dt><dd>${money(x.valor)}</dd></div><div><dt>Costo x compra</dt><dd>${money(x.spend / x.compras)}</dd></div><div><dt>CTR</dt><dd>${tasa(x.clics, x.impresiones)}</dd></div></dl></article>`; }).join("");
   return { titulo: "Creativos ganadores", fuente: F_META, cuerpo: `<div class="i-piezas n${top.length}">${fichas}</div>` };
 }
 function hojaCampanas(ctx) {
@@ -387,6 +411,16 @@ function mostrarInforme(op, d) {
 }
 function cerrarInforme() { $("informe").hidden = true; $("informe").innerHTML = ""; document.body.classList.remove("con-informe"); }
 $("informe").addEventListener("click", (e) => {
+  // Cambiar la toma de una pieza. No sale en el PDF: se imprime la que quedó elegida.
+  const cambiar = e.target.closest("[data-toma]");
+  if (cambiar) {
+    const caja = cambiar.closest(".i-img"), imgs = JSON.parse(caja.dataset.imgs);
+    const i = (Number(caja.dataset.i) + Number(cambiar.dataset.toma) + imgs.length) % imgs.length;
+    caja.dataset.i = i;
+    caja.querySelector("img").src = imgs[i];
+    caja.querySelector(".inf-toma span").textContent = `${i + 1}/${imgs.length}`;
+    return;
+  }
   if (e.target.id === "infVolver") return cerrarInforme();
   if (e.target.id === "infEditar") { cerrarInforme(); return abrirFormInforme(); }
   if (e.target.id === "infPdf") {

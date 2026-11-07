@@ -113,7 +113,7 @@ function cliente({ p_client: id, p_since: a, p_until: b, p_limit: lim }) {
     meta_sync: new Date(Date.now() - 180000).toISOString(), dias,
     pendiente: { total: conectada ? Math.round(fac * 0.08) : 0, ordenes: conectada ? Math.round(v * 0.1) : 0 },
     tipos: conectada ? [part("Nuevo", 0.62), part("Recurrente", 0.38)] : [],
-    pagos: conectada ? [part("credit_card", 0.51), part("custom", 0.28), part("other", 0.13), part("debit_card", 0.08)] : [],
+    pagos: conectada ? [part("credit_card", 0.51), part("custom", 0.28), part("other", 0.12), part("debit_card", 0.06), part("cash", 0.02), part("ticket", 0.01)] : [],
     pasarelas: conectada ? [part("Mercado Pago", 0.64), part("Pago Nube", 0.3), part("Transferencia", 0.06)] : [],
     cuotas: conectada ? [part(1, 0.52), part(3, 0.33), part(6, 0.15)] : [],
     envios: conectada ? [part("Andreani Estándar", 0.56), part("Andreani Sucursal", 0.27), part("Te vamos a contactar para coordinar la entrega", 0.09), part("Retiro en local", 0.04), part("Moto CABA", 0.02), part("OCA", 0.01), part("Correo", 0.01)] : [],
@@ -171,7 +171,7 @@ createServer(async (req, res) => {
     if (a.key !== "prueba") { res.statusCode = 401; return res.end(JSON.stringify({ error: "clave_invalida" })); }
     const etapa = (k) => ({ spend: 5200000 * k, impresiones: 2400000 * k, clics: 41000 * k, visitas: 33000 * k, carritos: 3900 * k, pagos: 1500 * k, compras: 610 * k, valor: 38000000 * k, mensajes: 40 * k });
     const pieza = (t, c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600" fill="${c}"/><text x="200" y="300" fill="#fff" font-size="34" text-anchor="middle">${t}</text></svg>`)}`;
-    const anuncio = (i, compras, spend, c) => ({ id: `a${i}`, nombre: `Video prueba ${i} | Colección verano | Reel con un nombre bastante largo`, campana: "Ventas | Catálogo", ...etapa(0), spend, impresiones: spend * 0.4, clics: spend * 0.007, compras, valor: compras * 62000, imagen: i === 4 ? null : pieza(`Pieza ${i}`, c) });
+    const anuncio = (i, compras, spend, c) => ({ id: `a${i}`, nombre: `Video prueba ${i} | Colección verano | Reel con un nombre bastante largo`, campana: "Ventas | Catálogo", ...etapa(0), spend, impresiones: spend * 0.4, clics: spend * 0.007, compras, valor: compras * 62000, imagenes: i === 4 ? [] : [pieza(`Pieza ${i}`, c), pieza(`Otra toma ${i}`, "#444455")] });
     return res.end(JSON.stringify({
       fallaron: 0, periodo: etapa(1), compara: a.comparaDesde ? etapa(0.88) : null,
       campanas: [["Ventas | Catálogo + contenido | CBO", 0.42], ["Ventas | Remarketing carritos", 0.18], ["Prospecting | Videos nuevos con nombre largo para probar el corte de la fila", 0.22], ["Reconocimiento | Marca", 0.1], ["Mayoristas (B2B)", 0.08]].map(([nombre, k], i) => ({ id: `c${i}`, nombre, ...etapa(k) })),

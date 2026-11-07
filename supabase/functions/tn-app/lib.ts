@@ -305,9 +305,53 @@ export function agruparAnuncios(filas: Record<string, any>[], usdArs = 1) {
   return [...m.values()].sort((a, b) => b.compras - a.compras || b.valor - a.valor).map(({ mayor: _, ...x }) => x);
 }
 
+const CAMPOS_PIEZA = "image_url,thumbnail_url,video_id,product_set_id,effective_object_story_id,effective_instagram_media_id,object_story_spec,asset_feed_spec";
+
+// La toma elegida en el anuncio va primero; el resto queda para poder cambiarla.
+export function ordenarTomas(lista: { uri?: string; is_preferred?: boolean }[] = []) {
+  return [...lista].filter((x) => x.uri).sort((a, b) => Number(!!b.is_preferred) - Number(!!a.is_preferred)).map((x) => x.uri as string);
+}
+
+// Todas las imágenes posibles de una pieza, de la mejor a la peor. Cada fuente puede fallar por permisos sin frenar a las demás.
+async function opcionesDePieza(c: Record<string, any>, pedir: (nodo: string, p: Record<string, string>) => Promise<any>) {
+  const out: string[] = [];
+  const sumar = (u: unknown) => { if (typeof u === "string" && u && !out.includes(u)) out.push(u); };
+  const intento = async (fn: () => Promise<void>) => {
+    try { await fn(); } catch (e) { console.error("imagen de anuncio:", c.id, String((e as Error)?.message ?? e).slice(0, 160)); }
+  };
+  const spec = c.object_story_spec ?? {}, feed = c.asset_feed_spec ?? {};
+  const video = c.video_id ?? spec.video_data?.video_id ?? feed.videos?.[0]?.video_id;
+  if (video) {
+    await intento(async () => {
+      const v = await pedir(String(video), { fields: "picture,thumbnails{uri,is_preferred}" });
+      ordenarTomas(v.thumbnails?.data).forEach(sumar);
+      if (!out.length) sumar(v.picture);
+    });
+  }
+  if (c.product_set_id) {
+    await intento(async () => {
+      const p = await pedir(`${c.product_set_id}/products`, { fields: "image_url", limit: "8" });
+      (p.data ?? []).forEach((x: any) => sumar(x.image_url));
+    });
+  }
+  sumar(c.image_url); sumar(spec.video_data?.image_url); sumar(spec.link_data?.picture);
+  (feed.images ?? []).slice(0, 4).forEach((x: any) => sumar(x.url));
+  (spec.link_data?.child_attachments ?? []).slice(0, 6).forEach((x: any) => sumar(x.picture));
+  if (!out.length && c.effective_object_story_id) await intento(async () => { sumar((await pedir(c.effective_object_story_id, { fields: "full_picture" })).full_picture); });
+  if (!out.length && c.effective_instagram_media_id) {
+    await intento(async () => {
+      const m = await pedir(c.effective_instagram_media_id, { fields: "media_url,thumbnail_url" });
+      sumar(m.thumbnail_url); sumar(m.media_url);
+    });
+  }
+  // En catálogo, la miniatura es el ícono genérico de Meta: mejor no mostrarla.
+  if (!out.length && !c.product_set_id) await intento(async () => { sumar((await pedir(c.id, { fields: "thumbnail_url", thumbnail_width: "1080", thumbnail_height: "1080" })).thumbnail_url); });
+  return out.slice(0, 10);
+}
+
 // Si falla la imagen, el anuncio se muestra igual, sin pieza.
 async function imagenesAnuncios(ids: string[], token: string, f: Fetcher) {
-  const out: Record<string, string> = {};
+  const out: Record<string, string[]> = {};
   if (!ids.length) return out;
   const pedir = async (nodo: string, params: Record<string, string>) => {
     const r = await f(`https://graph.facebook.com/${META_VERSION}/${nodo}?${new URLSearchParams(params)}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -320,8 +364,7 @@ async function imagenesAnuncios(ids: string[], token: string, f: Fetcher) {
     try {
       const pieza = (await pedir(id, { fields: "creative{id}" })).creative?.id;
       if (!pieza) return;
-      const c = await pedir(pieza, { fields: "image_url,thumbnail_url", thumbnail_width: "600", thumbnail_height: "600" });
-      if (c.image_url || c.thumbnail_url) out[id] = c.image_url ?? c.thumbnail_url;
+      out[id] = await opcionesDePieza(await pedir(pieza, { fields: CAMPOS_PIEZA }), pedir);
     } catch (e) {
       console.error("imagen de anuncio:", id, String((e as Error)?.message ?? e).slice(0, 200));
     }
@@ -342,7 +385,7 @@ export async function analisisMeta(accountId: string, token: string, desde: stri
     periodo: sumarResumen(cuenta.map((x) => resumirMeta(x, usdArs))),
     compara: compara ? sumarResumen(compara.map((x) => resumirMeta(x, usdArs))) : null,
     campanas: campanas.map((x) => ({ id: String(x.campaign_id), nombre: x.campaign_name ?? String(x.campaign_id), ...resumirMeta(x, usdArs) })),
-    anuncios: top.map((x) => ({ ...x, imagen: imagenes[x.id] ?? null })),
+    anuncios: top.map((x) => ({ ...x, imagenes: imagenes[x.id] ?? [] })),
   };
 }
 

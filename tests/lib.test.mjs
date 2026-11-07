@@ -233,24 +233,35 @@ test("el análisis trae cuenta, comparación, campañas y anuncios; sin imagen n
   assert.equal(r.compara.spend, 50);
   assert.equal(r.campanas[0].nombre, "Camp");
   assert.equal(r.anuncios[0].nombre, "Pieza");
-  assert.equal(r.anuncios[0].imagen, null);
+  assert.deepEqual(r.anuncios[0].imagenes, []);
   assert.ok(llamadas.every((u) => !u.includes("tok")), "el token no viaja en la URL");
   const sin = await analisisMeta("9", "tok", "2026-10-01", "2026-10-31", null, null, 1, f);
   assert.equal(sin.compara, null);
 });
 
-test("la imagen se pide por anuncio y el tamaño va sobre la pieza", async () => {
-  const f = async (url) => {
-    const u = new URL(url);
-    assert.ok(!u.searchParams.has("ids"), "Meta ya no acepta ids");
-    if (u.searchParams.get("fields") === "creative{id}") return res(200, { id: "a1", creative: { id: "p1" } });
-    if (u.pathname.endsWith("/p1")) {
-      assert.equal(u.searchParams.get("thumbnail_width"), "600");
-      return res(200, { id: "p1", thumbnail_url: "https://img/chica.jpg" });
-    }
-    const nivel = u.searchParams.get("level");
-    return res(200, { data: nivel === "ad" ? [filaMeta({ ad_id: "a1", ad_name: "Pieza" })] : [filaMeta({ campaign_id: "c1" })] });
-  };
-  const r = await analisisMeta("9", "tok", "2026-10-01", "2026-10-31", null, null, 1, f);
-  assert.equal(r.anuncios[0].imagen, "https://img/chica.jpg");
+const analisisCon = (nodos) => analisisMeta("9", "tok", "2026-10-01", "2026-10-31", null, null, 1, async (url) => {
+  const u = new URL(url), nodo = u.pathname.split("/").slice(2).join("/");
+  assert.ok(!u.searchParams.has("ids"), "Meta ya no acepta ids");
+  if (u.searchParams.has("level")) return res(200, { data: u.searchParams.get("level") === "ad" ? [filaMeta({ ad_id: "a1", ad_name: "Pieza" })] : [filaMeta({ campaign_id: "c1" })] });
+  if (u.searchParams.get("fields") === "creative{id}") return res(200, { id: "a1", creative: { id: "p1" } });
+  return nodos[nodo] ? res(200, { id: nodo, ...nodos[nodo] }) : res(400, { error: { message: "sin permiso" } });
+});
+
+test("video: la toma elegida va primero y quedan las demás para cambiar", async () => {
+  const r = await analisisCon({ p1: { video_id: "v1", thumbnail_url: "https://chica" }, v1: { thumbnails: { data: [{ uri: "https://t1" }, { uri: "https://t2", is_preferred: true }] } } });
+  assert.deepEqual(r.anuncios[0].imagenes, ["https://t2", "https://t1"]);
+});
+
+test("catálogo: usa fotos de productos y nunca el ícono genérico", async () => {
+  const con = await analisisCon({ p1: { product_set_id: "s1", thumbnail_url: "https://generico" }, "s1/products": { data: [{ image_url: "https://prod1" }, { image_url: "https://prod2" }] } });
+  assert.deepEqual(con.anuncios[0].imagenes, ["https://prod1", "https://prod2"]);
+  const sin = await analisisCon({ p1: { product_set_id: "s1", thumbnail_url: "https://generico" } });
+  assert.deepEqual(sin.anuncios[0].imagenes, [], "sin permiso al catálogo queda sin imagen");
+});
+
+test("publicación: si no hay otra fuente, usa la foto del post y sin eso la miniatura", async () => {
+  const post = await analisisCon({ p1: { effective_object_story_id: "st1" }, st1: { full_picture: "https://post" } });
+  assert.deepEqual(post.anuncios[0].imagenes, ["https://post"]);
+  const mini = await analisisCon({ p1: { thumbnail_url: "https://mini" } });
+  assert.deepEqual(mini.anuncios[0].imagenes, ["https://mini"]);
 });

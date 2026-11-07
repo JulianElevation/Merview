@@ -247,7 +247,7 @@ body.con-informe{overflow:hidden}
 .i-tab td.i-nom+td{min-width:60px}
 .i-barcol{width:150px;padding-left:0!important}.i-barcol i{display:block;height:10px;border-radius:0 3px 3px 0;background:#C9B8F5}
 .i-chip{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px}
-.i-corte{display:grid;grid-template-columns:280px 1fr;gap:34px;align-items:center;height:100%}
+.i-corte{display:grid;grid-template-columns:360px 1fr;gap:26px;align-items:center;height:100%}
 .i-torta{width:100%;height:auto}
 .i-dos{display:grid;grid-template-columns:1.05fr 1fr;gap:26px;align-items:start}
 .hoja .i-der td,.hoja .i-der th{padding:12px 10px}.i-der .i-var{font-size:12px}
@@ -259,7 +259,10 @@ body.con-informe{overflow:hidden}
 .i-piezas.n1{grid-template-columns:repeat(5,1fr)}.i-piezas.n2{grid-template-columns:repeat(5,1fr)}.i-piezas.n3{grid-template-columns:repeat(5,1fr)}.i-piezas.n4{grid-template-columns:repeat(5,1fr)}.i-piezas.n5{grid-template-columns:repeat(5,1fr)}
 .i-pieza{display:flex;flex-direction:column;min-width:0}
 .i-img{position:relative;height:350px;border:1px solid #E8E5EF;border-radius:8px;background:#F4F2F8;overflow:hidden;display:grid;place-items:center;color:#6B6780;font-size:12px}
-.i-img img{width:100%;height:100%;object-fit:cover;display:block}
+.i-img img{width:100%;height:100%;object-fit:contain;display:block}
+.inf-toma{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:3px;border-radius:999px;background:rgba(20,16,32,.82);color:#fff;font-size:11.5px;white-space:nowrap}
+.inf-toma button{width:24px;height:24px;border:0;border-radius:50%;background:transparent;color:#fff;font-size:17px;line-height:1;cursor:pointer}
+.inf-toma button:hover{background:rgba(255,255,255,.2)}
 .i-img em{position:absolute;top:7px;left:7px;width:24px;height:24px;border-radius:50%;background:#7C3AED;color:#fff;font-style:normal;font-weight:700;font-size:13px;display:grid;place-items:center}
 .i-pieza h4{margin:7px 0 5px;font-size:12px;font-weight:600;line-height:1.25;height:30px;overflow:hidden;color:#3B3650;overflow-wrap:anywhere}
 .i-pieza dl{margin:0;display:grid;gap:0}
@@ -271,7 +274,7 @@ body.con-informe{overflow:hidden}
   html,body{background:#fff!important;overflow:visible!important}
   body.con-informe>*:not(#informe){display:none!important}
   #informe{position:static;overflow:visible;background:#fff}
-  .inf-barra,.inf-avisos{display:none!important}
+  .inf-barra,.inf-avisos,.inf-toma{display:none!important}
   .inf-papel{display:block;padding:0;min-width:0}
   .hoja{box-shadow:none;page-break-after:always;break-after:page}
   .hoja:last-child{page-break-after:auto;break-after:auto}
