@@ -114,7 +114,7 @@ function cliente({ p_client: id, p_since: a, p_until: b, p_limit: lim }) {
   };
 }
 
-const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8" };
+const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".png": "image/png" };
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const m = url.pathname.match(/^\/rest\/v1\/rpc\/(\w+)$/);
