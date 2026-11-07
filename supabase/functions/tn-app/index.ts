@@ -3,7 +3,7 @@
 //        POST /privacy/{store-redact,customer-redact,customers-data-request}
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import {
-  APP_EVENTS, BUYER_FIELDS, clienteTN, DIAS_HISTORIA, filasCompradores, firmaValida, igualSeguro, insightsMeta,
+  APP_EVENTS, BUYER_FIELDS, campanasMeta, clienteTN, DIAS_HISTORIA, filasCompradores, firmaValida, igualSeguro, insightsMeta,
   nombreTienda, normalizarOrden, ORDER_EVENTS, proximaVentana, ventanaAtras,
 } from "./lib.ts";
 
@@ -224,7 +224,34 @@ async function metaSync(req: Request) {
       await db.from("meta_state").upsert({ account_id: id, last_error: texto(e), backfill_done: conHistoria.has(id) });
     }
   });
-  return responder(200, { cuentas: cuentas.length, filas, fallas });
+  const campanas = await sincronizarCampanas(inicio, atras, hoy).catch((e) => { console.error("campañas", texto(e)); return -1; });
+  return responder(200, { cuentas: cuentas.length, filas, fallas, campanas });
+}
+
+// Solo clientes marcados. Si esto falla, la inversión de todos ya quedó guardada arriba.
+async function sincronizarCampanas(inicio: number, atras: (n: number) => string, hoy: string) {
+  const { data: marcados } = await db.from("clients").select("meta_accounts").eq("active", true).eq("separa_b2b", true);
+  const cuentas = [...new Set((marcados ?? []).flatMap((c) => c.meta_accounts ?? []))] as string[];
+  if (!cuentas.length) return 0;
+  const { data: estados } = await db.from("meta_state").select("account_id,campanas_historia").in("account_id", cuentas);
+  const conHistoria = new Set((estados ?? []).filter((e) => e.campanas_historia).map((e) => e.account_id));
+  let n = 0;
+  await enParalelo(cuentas, 3, async (id) => {
+    if (Date.now() - inicio > PRESUPUESTO_MS) return;
+    const completa = !conHistoria.has(id);
+    try {
+      const { campanas, filas } = await campanasMeta(id, META_TOKEN, atras(completa ? DIAS_HISTORIA : 3), hoy);
+      for (let i = 0; i < Math.max(filas.length, 1); i += 500) {
+        const { error } = await db.rpc("meta_campanas_upsert", { p_campanas: i === 0 ? campanas : [], p_filas: filas.slice(i, i + 500) });
+        if (error) throw new Error(error.message);
+      }
+      n += filas.length;
+      await db.from("meta_state").update({ campanas_historia: true, campanas_error: null }).eq("account_id", id);
+    } catch (e) {
+      await db.from("meta_state").update({ campanas_error: texto(e) }).eq("account_id", id);
+    }
+  });
+  return n;
 }
 
 async function privacidad(req: Request, ruta: string) {

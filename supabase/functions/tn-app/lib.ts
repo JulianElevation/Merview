@@ -224,3 +224,44 @@ export async function insightsMeta(accountId: string, token: string, desde: stri
   }
   return filasMeta(accountId, null, filas);
 }
+
+// Inversión diaria por campaña, solo para clientes que separan campañas B2B.
+export function filasCampanas(accountId: string, data: Record<string, any>[]) {
+  return data.filter((x) => x.campaign_id).map((x) => ({
+    day: x.date_start,
+    campaign_id: String(x.campaign_id),
+    account_id: accountId,
+    currency: x.account_currency ?? null,
+    spend: numero(x.spend) ?? 0,
+    messages: numero((x.actions ?? []).find((a: any) => a.action_type === MENSAJES)?.value) ?? 0,
+  }));
+}
+
+async function paginasMeta(url0: string, token: string, f: Fetcher) {
+  let url: string | null = url0;
+  const filas: Record<string, any>[] = [];
+  while (url) {
+    const r: Response = await f(url, { headers: { Authorization: `Bearer ${token}` } });
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new Error(j.error?.message ?? `meta: HTTP ${r.status}`);
+    filas.push(...(j.data ?? []));
+    url = j.paging?.next ?? null;
+  }
+  return filas;
+}
+
+// Devuelve el gasto por día y el nombre actual de cada campaña: si se renombra, corrige también los días pasados.
+export async function campanasMeta(accountId: string, token: string, desde: string, hasta: string, f: Fetcher = fetch) {
+  const base = `https://graph.facebook.com/${META_VERSION}/act_${accountId}`;
+  const q = new URLSearchParams({
+    level: "campaign", time_increment: "1", limit: "500",
+    fields: "campaign_id,campaign_name,spend,actions,account_currency",
+    time_range: JSON.stringify({ since: desde, until: hasta }),
+  });
+  const insights = await paginasMeta(`${base}/insights?${q}`, token, f);
+  const lista = await paginasMeta(`${base}/campaigns?${new URLSearchParams({ fields: "id,name,objective", limit: "500" })}`, token, f);
+  const campanas = new Map<string, { campaign_id: string; account_id: string; name: string; objective: string | null }>();
+  for (const x of insights) if (x.campaign_id) campanas.set(String(x.campaign_id), { campaign_id: String(x.campaign_id), account_id: accountId, name: x.campaign_name ?? String(x.campaign_id), objective: null });
+  for (const c of lista) campanas.set(String(c.id), { campaign_id: String(c.id), account_id: accountId, name: c.name ?? String(c.id), objective: c.objective ?? null });
+  return { campanas: [...campanas.values()], filas: filasCampanas(accountId, insights) };
+}

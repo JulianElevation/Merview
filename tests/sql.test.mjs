@@ -38,6 +38,7 @@ await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_portal_rapid
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_link_cliente.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_agencia.sql"), "utf8"));
 await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_agencia_12h.sql"), "utf8"));
+await db.exec(readFileSync(join(raiz, "supabase/migrations/20261106_b2b.sql"), "utf8"));
 console.log("ok  la migración corre completa");
 
 const hoy = (await q(`select (now() at time zone 'America/Argentina/Buenos_Aires')::date::text d`))[0].d;
@@ -277,6 +278,61 @@ await assert.rejects(q(`select public.portal_alta_cliente('mala','Y')`), /clave_
 const pAg = (await q(`select has_table_privilege('anon','public.client_movimientos','select') m, has_table_privilege('anon','public.meta_foto','select') f, has_function_privilege('anon','public.meta_foto_tomar()','execute') t`))[0];
 assert.deepEqual(pAg, { m: false, f: false, t: false });
 console.log("ok  agencia: alertas, altas y bajas");
+
+// Campañas B2B: solo en clientes marcados, reconocidas por el nombre.
+const generalDe = async (id) => (await q(`select public.portal_general('clave',$1::date,$1::date) r`, [hoy]))[0].r.clientes.find((c) => c.id === id);
+const clienteDe = async (id) => (await q(`select public.portal_cliente('clave',$1,$2::date,$2::date) r`, [id, hoy]))[0].r;
+await q(`select public.meta_campanas_upsert($1::jsonb,$2::jsonb)`, [
+  JSON.stringify([
+    { campaign_id: "c1", account_id: "m1", name: "Ventas catálogo", objective: "OUTCOME_SALES" },
+    { campaign_id: "c2", account_id: "m1", name: "Mensajes (b2b) mayorista", objective: "OUTCOME_ENGAGEMENT" },
+    { campaign_id: "c3", account_id: "m1", name: "Interacción sin etiqueta", objective: "OUTCOME_SALES" },
+  ]),
+  JSON.stringify([
+    { day: hoy, campaign_id: "c1", account_id: "m1", currency: "ARS", spend: 200, messages: 2 },
+    { day: hoy, campaign_id: "c2", account_id: "m1", currency: "ARS", spend: 60, messages: 40 },
+    { day: hoy, campaign_id: "c3", account_id: "m1", currency: "ARS", spend: 40, messages: 150 },
+    { day: dia(8), campaign_id: "c2", account_id: "m1", currency: "ARS", spend: 10, messages: 1 },
+  ]),
+]);
+let gA = await generalDe("a"), vA = await clienteDe("a");
+assert.equal(Number(gA.spend_b2b), 0, "sin marcar no se separa nada");
+assert.equal(Number(vA.dias[0].spend_b2b), 0);
+assert.deepEqual(vA.campanas, [], "sin marcar no se muestran campañas");
+const espTotal = Number(gA.spend);
+await q(`select public.portal_b2b_marcar('clave','a',true)`);
+gA = await generalDe("a"); vA = await clienteDe("a");
+assert.equal(gA.separa_b2b, true);
+assert.equal(Number(gA.spend), espTotal, "la inversión total sigue completa");
+assert.equal(Number(gA.spend_b2b), 60, "suma solo la etiquetada, sin importar mayúsculas");
+assert.equal(Number(gA.messages_b2b), 40);
+assert.equal(Number(vA.dias[0].spend_b2b), 60);
+assert.equal(vA.cliente.separa_b2b, true);
+const camp = Object.fromEntries(vA.campanas.map((c) => [c.id, c]));
+assert.equal(camp.c2.b2b, true);
+assert.equal(camp.c2.parece_mensajes, false);
+assert.equal(camp.c1.b2b, false);
+assert.equal(camp.c1.parece_mensajes, false, "venta común no alerta");
+assert.equal(camp.c3.parece_mensajes, true, "objetivo de ventas pero muchas conversaciones");
+// Cambiar el nombre corrige también los días anteriores.
+await q(`select public.meta_campanas_upsert($1::jsonb,'[]'::jsonb)`, [JSON.stringify([{ campaign_id: "c3", account_id: "m1", name: "Interacción (MSJ)", objective: "OUTCOME_SALES" }])]);
+assert.equal(Number((await generalDe("a")).spend_b2b), 100, "(MSJ) también separa");
+const conPrevio = (await q(`select public.portal_cliente('clave','a',$1::date,$1::date) r`, [hoy]))[0].r;
+assert.equal(Number(conPrevio.prev.spend_b2b), 0, "el período anterior de un día no tiene B2B");
+const semana = (await q(`select public.portal_cliente('clave','a',$1::date,$2::date) r`, [dia(7), hoy]))[0].r;
+assert.equal(Number(semana.prev.spend_b2b), 10, "el período anterior separa su B2B");
+const agB = ficha(await ag(), "a");
+assert.ok(Number(agB.inv_7) >= 0, "la caída de MER usa la inversión sin B2B");
+// Permisos
+const tA3 = (await q(`select public.portal_link_cliente('clave','a') t`))[0].t;
+await assert.rejects(q(`select public.portal_b2b_marcar($1,'a',false)`, [tA3]), /clave_invalida/, "el link de cliente no marca nada");
+await assert.rejects(q(`select public.portal_b2b_marcar('mala','a',false)`), /clave_invalida/);
+await assert.rejects(q(`select public.portal_b2b_marcar('clave','noexiste',true)`), /cliente_inexistente/);
+const pB = (await q(`select has_table_privilege('anon','public.meta_campana_dia','select') d, has_table_privilege('anon','public.meta_campanas','select') n, has_function_privilege('anon','public.portal_b2b(date,date)','execute') f, has_function_privilege('anon','public.meta_campanas_upsert(jsonb,jsonb)','execute') u`))[0];
+assert.deepEqual(pB, { d: false, n: false, f: false, u: false });
+await q(`select public.portal_b2b_marcar('clave','a',false)`);
+assert.equal(Number((await generalDe("a")).spend_b2b), 0, "desmarcar vuelve todo atrás");
+console.log("ok  campañas B2B: se separan por nombre solo en clientes marcados");
 
 await db.exec(readFileSync(join(raiz, "supabase/rollback_portal.sql"), "utf8"));
 await db.exec(`delete from public.clients where id in ('nina-azul-s-a','de-leads','z')`);

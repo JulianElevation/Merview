@@ -405,7 +405,7 @@ function torta(titulo, filas, etiqueta) {
 
 function completar(dias, a, b) {
   const m = new Map(dias.map((d) => [d.day, d])), out = [];
-  for (let d = a; d <= b; d = sumar(d, 1)) out.push(m.get(d) || { day: d, revenue: 0, spend: 0, orders: 0, messages: 0, nuevos: 0, recurrentes: 0 });
+  for (let d = a; d <= b; d = sumar(d, 1)) out.push(m.get(d) || { day: d, revenue: 0, spend: 0, orders: 0, messages: 0, nuevos: 0, recurrentes: 0, spend_b2b: 0, messages_b2b: 0 });
   return out;
 }
 function diasCompletos(dias) { const [a, b] = rango(); return completar(dias, a, b); }
@@ -447,12 +447,12 @@ function grafPuntos(dias) {
   const [a, b] = grafRango(), g = grafAgrupacion(), grupos = new Map();
   completar(dias, a, b).forEach((d) => {
     const k = g === "s" ? lunes(d.day) : g === "m" ? d.day.slice(0, 7) : d.day;
-    if (!grupos.has(k)) grupos.set(k, { label: g === "m" ? mesTxt(k) : ddmm(k), tip: g === "s" ? `Semana del ${ddmm(k)}` : g === "m" ? mesTxt(k) : ddmm(k), parcial: false, revenue: 0, orders: 0, spend: 0, messages: 0, nuevos: 0, recurrentes: 0 });
+    if (!grupos.has(k)) grupos.set(k, { label: g === "m" ? mesTxt(k) : ddmm(k), tip: g === "s" ? `Semana del ${ddmm(k)}` : g === "m" ? mesTxt(k) : ddmm(k), parcial: false, revenue: 0, orders: 0, spend: 0, messages: 0, nuevos: 0, recurrentes: 0, spend_b2b: 0, messages_b2b: 0 });
     const x = grupos.get(k);
     if (d.day === hoyBA()) x.parcial = true;
-    ["revenue", "orders", "spend", "messages", "nuevos", "recurrentes"].forEach((c) => { x[c] += num(d[c]); });
+    ["revenue", "orders", "spend", "messages", "nuevos", "recurrentes", "spend_b2b", "messages_b2b"].forEach((c) => { x[c] += num(d[c]); });
   });
-  return [...grupos.values()];
+  return [...grupos.values()].map((x) => ({ ...x, spend_tienda: Math.max(0, x.spend - x.spend_b2b) }));
 }
 const cantidad = (v) => nf0.format(v);
 const ICONOS = {
@@ -467,6 +467,7 @@ const ICONOS = {
   cuo: '<rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
   msg: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   cpm: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6M9.5 10h5"/>',
+  ib2: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M3 13h18"/>',
   uni: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
   tie: '<path d="M3 9 4.5 4h15L21 9"/><path d="M4 9v11h16V9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/>',
   tab: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>',
@@ -486,12 +487,14 @@ function grafMetricas() {
   const razon = (id, t, arr, aba, gr, fmtY, fmtV, fmtL) => ({ id, t, tipo: "linea", gr, fmtY, fmtV, fmtL, v: (x) => (x[aba] > 0 ? x[arr] / x[aba] : null), tot: (ps) => { const m = ps.reduce((s, x) => s + x[aba], 0); return m > 0 ? ps.reduce((s, x) => s + x[arr], 0) / m : null; } });
   const fac = suma("fac", "Facturación", "revenue", "vol");
   const inv = suma("inv", "Inversión", "spend", "vol");
-  const mer = razon("mer", "MER", "revenue", "spend", "mer", merTxt, merTxt, merTxt);
+  const conB2b = E.v !== "agencia" && !!CLI?.cliente?.separa_b2b;
+  const mer = razon("mer", conB2b ? "MER tienda" : "MER", "revenue", "spend_tienda", "mer", merTxt, merTxt, merTxt);
   if (E.v === "agencia") return [fac, inv, mer];
   if (CLI?.cliente?.kind === "leads") return [inv, suma("msg", "Mensajes", "messages", "cnt"), razon("cpm", "Costo por mensaje", "spend", "messages", "uni", corto, money, cortoVal)];
-  if (!(CLI?.tiendas || []).some((t) => t.conectada)) return [fac, inv, mer];
+  const extraB2b = conB2b ? [suma("ib2", "Inversión B2B", "spend_b2b", "vol"), suma("msg", "Conversaciones", "messages", "cnt")] : [];
+  if (!(CLI?.tiendas || []).some((t) => t.conectada)) return [fac, inv, mer, ...extraB2b];
   return [fac, inv, mer, suma("ven", "Ventas", "orders", "cnt"), razon("tic", "Ticket promedio", "revenue", "orders", "uni", corto, money, cortoVal),
-    razon("cac", "CAC", "spend", "nuevos", "uni", corto, money, cortoVal),
+    razon("cac", "CAC", "spend_tienda", "nuevos", "uni", corto, money, cortoVal), ...extraB2b,
     { id: "cli", t: "Nuevos y recurrentes", tipo: "desglose" }, { id: "pag", t: "Método de pago", tipo: "desglose", fijo: true }, { id: "cuo", t: "Cuotas", tipo: "desglose", fijo: true }];
 }
 function grafSel() {
@@ -522,7 +525,7 @@ function tiles(valores, extras = []) {
       <b class="${cls || ""}">${esc(v)}</b>${sub ? `<small>${subTxt(sub, m.id)}</small>` : ""}</button>`;
   }).join("");
   // Hasta 4 por fila: con 8 quedan dos filas parejas, sin tarjetas sueltas.
-  return `<div class="tiles" style="--cols:${Math.min(4, total)}">${lista}${extras.join("")}</div>`;
+  return `<div class="tiles" style="--cols:${total >= 9 ? 5 : Math.min(4, total)}">${lista}${extras.join("")}</div>`;
 }
 function sincronizarTiles() {
   const sel = grafSel().map((m) => m.id);
@@ -675,7 +678,8 @@ function vistaGeneral() {
   const todos = GEN.clientes.filter((c) => !E.soloActivos || c.activo || num(c.revenue) > 0 || num(c.spend) > 0);
   const eco = todos.filter((c) => c.kind !== "leads").map((c) => {
     const spend = num(c.spend), fac = num(c.revenue), tieneTienda = c.tn_stores.length + c.woo_shops.length > 0;
-    return { ...c, spend, fac, ord: c.orders == null ? null : num(c.orders), tieneTienda, mer: tieneTienda && spend > 0 ? fac / spend : null };
+    const spTienda = Math.max(0, spend - num(c.spend_b2b));
+    return { ...c, spend, fac, ord: c.orders == null ? null : num(c.orders), tieneTienda, mer: tieneTienda && spTienda > 0 ? fac / spTienda : null };
   });
   const term = E.q.toLowerCase();
   const lista = eco.filter((c) => !term || c.name.toLowerCase().includes(term));
@@ -690,7 +694,7 @@ function vistaGeneral() {
   const filas = lista.map((c) => {
     const w = c.mer == null ? 0 : Math.min(100, (c.mer / 12) * 100), mc = merCls(c.mer);
     const sinApp = c.tn_stores.length > 0 && num(c.tiendas_vivo) < c.tn_stores.length;
-    const nota = !c.tieneTienda ? "Sin tienda vinculada" : c.error_tienda ? "Problema de conexión con la tienda" : sinApp ? "Sin la app de Tiendanube" : "";
+    const nota = !c.tieneTienda ? "Sin tienda vinculada" : c.error_tienda ? "Problema de conexión con la tienda" : sinApp ? "Sin la app de Tiendanube" : num(c.spend_b2b) > 0 ? "MER sin campañas B2B" : "";
     const vivo = num(c.tiendas_vivo) > 0;
     return `<tr class="fila" tabindex="0" data-id="${esc(c.id)}">
       <td class="nom"><b><span class="punto ${vivo ? "" : "lento"}" title="${vivo ? "En vivo" : "Cada 2 horas"}"></span>${esc(c.name)}</b>${nota ? `<small>${nota}</small>` : ""}</td>
@@ -738,7 +742,7 @@ function fuentes() {
 function vistaCliente() {
   if (!E.c || !CLI) return `<div class="cab"><h1>Elegí un cliente</h1></div><p class="sub">Usá el desplegable de arriba.</p>`;
   const c = CLI.cliente, dias = diasCompletos(CLI.dias || []);
-  const nombre = `<div class="cab"><div><h1>${esc(c.name)}</h1><p class="sub">${rangoTxt(rango())}</p></div><div class="cab-der">${fuentesCliente()}${modoCliente ? "" : '<button class="btn" id="linkCliente">Link para el cliente</button>'}</div></div>`;
+  const nombre = `<div class="cab"><div><h1>${esc(c.name)}</h1><p class="sub">${rangoTxt(rango())}</p></div><div class="cab-der">${fuentesCliente()}${modoCliente ? "" : `<button class="btn" id="marcaB2b" aria-pressed="${!!c.separa_b2b}" title="Separa del MER las campañas con (B2B) o (MSJ) en el nombre">${c.separa_b2b ? "Tiene campañas B2B" : "Marcar campañas B2B"}</button><button class="btn" id="linkCliente">Link para el cliente</button>`}</div></div>`;
   const spend = dias.reduce((s, d) => s + num(d.spend), 0);
   if (c.kind === "leads") {
     const msgs = dias.reduce((s, d) => s + num(d.messages), 0);
@@ -749,17 +753,18 @@ function vistaCliente() {
     }) + bloqueGraf();
   }
   const fac = dias.reduce((s, d) => s + num(d.revenue), 0);
-  const mer = spend > 0 ? fac / spend : null;
+  const inB2b = dias.reduce((s, d) => s + num(d.spend_b2b), 0), spTienda = Math.max(0, spend - inB2b), msgs = dias.reduce((s, d) => s + num(d.messages), 0);
+  const mer = spTienda > 0 ? fac / spTienda : null;
   const hayOrdenes = dias.some((d) => d.orders != null);
   const ventas = dias.reduce((s, d) => s + num(d.orders), 0);
   const nuevos = dias.reduce((s, d) => s + num(d.nuevos), 0), recs = dias.reduce((s, d) => s + num(d.recurrentes), 0);
   const conectada = (CLI.tiendas || []).some((t) => t.conectada);
   const compradoresCargando = (CLI.tiendas || []).some((t) => t.conectada && !t.buyers_done);
   const avisoCompradores = compradoresCargando ? "Cargando historial: puede dar alto" : "";
-  const cac = nuevos > 0 && spend > 0 ? spend / nuevos : null;
+  const cac = nuevos > 0 && spTienda > 0 ? spTienda / nuevos : null;
   const lista = conectada ? tablaProductos() + tablaOrdenes() : "";
   const P = CLI.prev || {}, pFac = num(P.revenue), pInv = num(P.spend), pVen = num(P.orders), pUni = num(P.unidades), pNue = num(P.nuevos);
-  const pMer = pInv > 0 ? pFac / pInv : null, unidades = num(CLI.unidades), pTic = pVen > 0 ? pFac / pVen : 0, pCac = pNue > 0 && pInv > 0 ? pInv / pNue : 0;
+  const pTienda = Math.max(0, pInv - num(P.spend_b2b)), pMer = pTienda > 0 ? pFac / pTienda : null, unidades = num(CLI.unidades), pTic = pVen > 0 ? pFac / pVen : 0, pCac = pNue > 0 && pTienda > 0 ? pTienda / pNue : 0;
   const cortes = conectada
     ? `<div class="tortas">${torta("Método de pago", CLI.pagos || [], pagoTxt)}${torta("Cuotas", CLI.cuotas || [], (k) => (Number(k) === 1 ? "1 pago" : `${k} cuotas`))}${torta("Método de envío", CLI.envios || [], (k) => k)}${torta("Proveedor de pago", CLI.pasarelas || [], (k) => k)}${torta("Clientes nuevos y recurrentes", CLI.tipos || [], (k) => (k === "Nuevo" ? "Nuevos" : "Recurrentes"))}</div>`
     : "";
@@ -771,12 +776,25 @@ function vistaCliente() {
       ven: [hayOrdenes ? nf0.format(ventas) : "—", hayOrdenes ? cambio(ventas, pVen) : ""],
       tic: [hayOrdenes && ventas ? money(fac / ventas) : "—", hayOrdenes && ventas ? cambio(fac / ventas, pTic) : ""],
       cac: [cac == null ? "—" : money(cac), compradoresCargando ? "Cargando historial: puede dar bajo" : (cac == null ? "" : cambio(cac, pCac)) || "Inversión ÷ clientes nuevos"],
+      ib2: [money(inB2b), spend > 0 ? `${pct(inB2b, spend)}% de la inversión` : ""],
+      msg: [nf0.format(msgs), cambio(msgs, num(P.messages))],
     }, conectada ? [
       kpi("Clientes nuevos", nf0.format(nuevos), avisoCompradores || cambio(nuevos, pNue) || (nuevos + recs ? `${pct(nuevos, nuevos + recs)}% de las ventas` : ""), "", "cli"),
       kpi("Productos vendidos", nf0.format(unidades), cambio(unidades, pUni), "", "uni"),
     ] : [])}` +
-    bloqueGraf() +
+    bloqueGraf() + bloqueB2b(c, spend, fac, inB2b) +
     cortes + lista;
+}
+function bloqueB2b(c, spend, fac, inB2b) {
+  if (!c.separa_b2b) return "";
+  const camp = CLI.campanas || [], tag = camp.filter((x) => x.b2b), faltan = camp.filter((x) => x.parece_mensajes);
+  const conv = tag.reduce((s, x) => s + num(x.messages), 0);
+  const fila = (x) => `<tr><td class="nom" style="white-space:normal"><b>${esc(x.nombre)}</b></td><td>${x.b2b ? '<span class="tag ok">B2B</span>' : x.parece_mensajes ? '<span class="tag pend">Sin etiqueta</span>' : '<span class="tag">Tienda</span>'}</td><td>${money(num(x.spend))}</td><td>${nf0.format(num(x.messages))}</td><td class="hm">${num(x.messages) ? money(num(x.spend) / num(x.messages)) : "—"}</td></tr>`;
+  return `<section class="bloque"><h2>Campañas B2B y de mensajes</h2>
+    <p class="sub" style="padding:0 16px">Las campañas con <b>(B2B)</b> o <b>(MSJ)</b> en el nombre no cuentan para el MER tienda. Lo que se vende por ese canal no está en la tienda.</p>
+    <div class="kpis b2b-kpis">${kpi("Inversión B2B", money(inB2b), spend > 0 ? `${pct(inB2b, spend)}% de la inversión` : "", "", "ib2")}${kpi("Conversaciones B2B", nf0.format(conv), conv ? `${money(inB2b / conv)} cada una` : "", "", "msg")}${kpi("MER total", spend > 0 ? merTxt(fac / spend) : "—", "Con toda la inversión", "", "mer")}</div>
+    ${faltan.length && !modoCliente ? `<div class="aviso aviso-app" style="margin:0 16px 12px">${faltan.length === 1 ? "1 campaña parece" : `${faltan.length} campañas parecen`} de mensajes y no tiene${faltan.length === 1 ? "" : "n"} la etiqueta. Si no son de tienda, agregale (B2B) o (MSJ) al nombre en Meta.</div>` : ""}
+    ${camp.length ? `<div class="tablebox"><table><thead><tr><th>Campaña</th><th>Tipo</th><th>Inversión</th><th>Conversaciones</th><th class="hm">Costo</th></tr></thead><tbody>${camp.map(fila).join("")}</tbody></table></div>` : '<p class="sub" style="padding:0 16px 14px">Trayendo las campañas. Pueden tardar hasta 5 minutos en aparecer.</p>'}</section>`;
 }
 function fuentesCliente() {
   if (modoCliente) return "";
@@ -899,7 +917,7 @@ function bloqueMovimientos() {
 function vistaAgencia() {
   const dias = diasCompletos(GEN.dias || []);
   const eco = GEN.clientes.filter((c) => c.kind !== "leads" && c.tn_stores.length + c.woo_shops.length > 0)
-    .map((c) => ({ ...c, s: num(c.spend), f: num(c.revenue) })).map((c) => ({ ...c, mer: c.s > 0 ? c.f / c.s : null }));
+    .map((c) => ({ ...c, s: num(c.spend), f: num(c.revenue) })).map((c) => ({ ...c, mer: c.s - num(c.spend_b2b) > 0 ? c.f / (c.s - num(c.spend_b2b)) : null }));
   const fac = dias.reduce((s, d) => s + num(d.revenue), 0), inv = dias.reduce((s, d) => s + num(d.spend), 0), mer = inv > 0 ? fac / inv : null;
   const pf = num(GEN.prev?.revenue), pi = num(GEN.prev?.spend), pm = pi > 0 ? pf / pi : null;
   const conInv = eco.filter((c) => c.mer != null);
@@ -976,6 +994,11 @@ vista.addEventListener("click", (e) => {
     return pintar();
   }
   if (e.target.id === "linkCliente") return linkCliente(false);
+  if (e.target.id === "marcaB2b") {
+    const marcado = !CLI.cliente.separa_b2b;
+    if (!marcado && !confirm("¿Dejar de separar las campañas B2B de este cliente? El MER vuelve a usar toda la inversión.")) return;
+    return rpc("portal_b2b_marcar", { p_client: E.c, p_marcado: marcado }).then(() => cargar({ silencio: true })).catch((err) => { const a = $("aviso"); a.textContent = "No se pudo guardar: " + err.message; a.className = "aviso err"; a.hidden = false; });
+  }
   const am = e.target.closest("[data-agmer]");
   if (am) { E.agMer = E.agMer === am.dataset.agmer ? null : am.dataset.agmer; return pintar(); }
   const af = e.target.closest("[data-agform]");

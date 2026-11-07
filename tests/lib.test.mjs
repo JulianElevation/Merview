@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import {
-  BUYER_FIELDS, clienteTN, filasCompradores, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana, ventanaAtras,
+  BUYER_FIELDS, campanasMeta, clienteTN, filasCompradores, filasMeta, firmaValida, hmacHex, insightsMeta, nombreTienda, normalizarOrden, ORDER_FIELDS, proximaVentana, ventanaAtras,
 } from "../supabase/functions/tn-app/lib.ts";
 
 const res = (status, body, headers = {}) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers });
@@ -158,4 +158,28 @@ test("nombre de tienda en cualquier formato", () => {
   assert.equal(nombreTienda({ name: { es: "Mi Tienda", pt: "Minha" } }), "Mi Tienda");
   assert.equal(nombreTienda({ name: "Plana" }), "Plana");
   assert.equal(nombreTienda({}), null);
+});
+
+test("trae campañas con su nombre actual, aunque ya no estén en la lista", async () => {
+  const urls = [];
+  const f = async (u) => {
+    urls.push(u);
+    if (u.includes("/campaigns")) return res(200, { data: [{ id: "c1", name: "Nombre nuevo (B2B)", objective: "OUTCOME_ENGAGEMENT" }] });
+    return res(200, { data: [
+      { date_start: "2026-11-05", campaign_id: "c1", campaign_name: "Nombre viejo", spend: "10.5", account_currency: "ARS", actions: [{ action_type: "onsite_conversion.messaging_conversation_started_7d", value: "4" }] },
+      { date_start: "2026-11-05", campaign_id: "c2", campaign_name: "Borrada", spend: "3", account_currency: "USD" },
+      { date_start: "2026-11-05", spend: "1" },
+    ] });
+  };
+  const { campanas, filas } = await campanasMeta("9", "t", "2026-11-05", "2026-11-06", f);
+  assert.match(urls[0], /act_9\/insights/);
+  assert.match(urls[0], /level=campaign/);
+  const c = Object.fromEntries(campanas.map((x) => [x.campaign_id, x]));
+  assert.equal(c.c1.name, "Nombre nuevo (B2B)", "gana el nombre actual");
+  assert.equal(c.c1.objective, "OUTCOME_ENGAGEMENT");
+  assert.equal(c.c2.name, "Borrada");
+  assert.equal(filas.length, 2, "sin campaña no se guarda");
+  assert.deepEqual(filas[0], { day: "2026-11-05", campaign_id: "c1", account_id: "9", currency: "ARS", spend: 10.5, messages: 4 });
+  assert.equal(filas[1].currency, "USD");
+  await assert.rejects(campanasMeta("9", "t", "a", "b", async () => res(400, { error: { message: "sin permiso" } })), /sin permiso/);
 });

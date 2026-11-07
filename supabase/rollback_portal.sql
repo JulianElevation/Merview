@@ -5,6 +5,8 @@ do $$ begin
     perform cron.unschedule(jobname) from cron.job where jobname in ('tn-reconciliar','meta-sync','tn-limpiar','meta-foto');
   end if;
 end $$;
+update public.clients set kind = 'leads' where id = 'vanskap';
+drop function if exists public.portal_b2b_marcar(text,text,boolean);
 drop function if exists public.portal_alta_cliente(text,text,boolean,text,text,date,text);
 drop function if exists public.portal_reactivar_cliente(text,text,date,text);
 drop function if exists public.portal_baja_cliente(text,text,date,text);
@@ -19,6 +21,12 @@ drop function if exists public.portal_cliente_datos(text,date,date,integer,integ
 drop table if exists public.client_links;
 drop function if exists public.portal_general(text,date,date);
 drop function if exists public.portal_serie(date,date);
+drop function if exists public.portal_b2b(date,date);
+drop function if exists public.meta_campanas_upsert(jsonb,jsonb);
+drop function if exists public.es_b2b(text);
+drop table if exists public.meta_campana_dia;
+drop table if exists public.meta_campanas;
+alter table public.clients drop column if exists separa_b2b;
 drop function if exists public.meta_upsert(jsonb);
 drop function if exists public.tn_upsert_buyers(jsonb);
 drop function if exists public.tn_upsert_orders(jsonb);

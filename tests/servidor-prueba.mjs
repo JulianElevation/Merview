@@ -74,6 +74,13 @@ function agencia() {
   };
 }
 
+const MARCADOS = new Set(["b"]);
+const CAMPANAS = [
+  { id: "1", nombre: "Ventas | Catálogo | CBO", objetivo: "OUTCOME_SALES", factor: 0.32, msgs: 46, b2b: false, parece_mensajes: false },
+  { id: "2", nombre: "Interacción Manual IG (B2B)", objetivo: "OUTCOME_ENGAGEMENT", factor: 0.33, msgs: 2300, b2b: true, parece_mensajes: false },
+  { id: "3", nombre: "Mayoristas WhatsApp (MSJ)", objetivo: "OUTCOME_ENGAGEMENT", factor: 0.2, msgs: 1400, b2b: true, parece_mensajes: false },
+  { id: "4", nombre: "Interacción Manual IG sin marcar", objetivo: "OUTCOME_SALES", factor: 0.15, msgs: 1066, b2b: false, parece_mensajes: true },
+];
 function cliente({ p_client: id, p_since: a, p_until: b, p_limit: lim }) {
   const c = CLIENTES.find((x) => x.id === id);
   if (!c) return null;
@@ -140,7 +147,22 @@ createServer(async (req, res) => {
       CLIENTES.push(c); MOV.unshift({ id: MOV.length + 1, client_id: c.id, name: c.name, tipo: "alta", fecha: a.p_fecha, motivo: null });
       return res.end(JSON.stringify(c.id));
     }
-    return res.end(JSON.stringify(m[1] === "portal_general" ? general(a) : cliente(a)));
+    if (m[1] === "portal_b2b_marcar") { if (a.p_marcado) MARCADOS.add(a.p_client); else MARCADOS.delete(a.p_client); return res.end("null"); }
+    if (m[1] === "portal_general") {
+      const g = general(a);
+      g.clientes.forEach((c) => { c.separa_b2b = MARCADOS.has(c.id); c.spend_b2b = c.separa_b2b ? c.spend * 0.53 : 0; });
+      return res.end(JSON.stringify(g));
+    }
+    const rc = cliente(a);
+    if (rc) {
+      const si = MARCADOS.has(a.p_client);
+      rc.cliente.separa_b2b = si;
+      rc.dias.forEach((d) => { d.spend_b2b = si ? d.spend * 0.53 : 0; d.messages_b2b = si ? 120 : 0; d.messages = si ? 160 : d.messages; });
+      const tot = rc.dias.reduce((x, d) => x + d.spend, 0);
+      rc.campanas = si ? CAMPANAS.map(({ factor, msgs, ...x }) => ({ ...x, spend: tot * factor, messages: msgs })) : [];
+      rc.prev.spend_b2b = si ? rc.prev.spend * 0.5 : 0;
+    }
+    return res.end(JSON.stringify(rc));
   }
   if (url.pathname === "/config.js") {
     res.setHeader("Content-Type", "text/javascript");
