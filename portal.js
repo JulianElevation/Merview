@@ -840,16 +840,17 @@ function alertas(conInv) {
   const sinGasto = AG.gasto_medible ? activos.filter((c) => c.sin_gasto_12h) : [];
   const sinVenta = venden.filter((c) => c.ult_venta == null || num(c.dias_sin_venta) >= ALERTA_DIAS)
     .sort((a, b) => (b.ult_venta == null) - (a.ult_venta == null) || num(b.dias_sin_venta) - num(a.dias_sin_venta));
-  // Cae el MER: últimos 7 días contra los 7 anteriores, 3 puntos o 30%.
+  // Cae el MER: últimos 7 días contra los 7 anteriores, 3 puntos o 30%, y además baja de color.
+  const nivel = (v) => (v >= 6 ? 2 : v >= 3 ? 1 : 0);
   const caida = AG.clientes.filter((c) => c.kind !== "leads" && num(c.inv_7) > 0 && num(c.inv_7_prev) > 0 && num(c.fac_7_prev) > 0)
     .map((c) => ({ ...c, ahora: num(c.fac_7) / num(c.inv_7), antes: num(c.fac_7_prev) / num(c.inv_7_prev) }))
-    .filter((c) => c.ahora < c.antes && (c.antes - c.ahora >= CAIDA_PUNTOS || (c.antes - c.ahora) / c.antes >= CAIDA_PCT))
+    .filter((c) => nivel(c.ahora) < nivel(c.antes) && (c.antes - c.ahora >= CAIDA_PUNTOS || (c.antes - c.ahora) / c.antes >= CAIDA_PCT))
     .sort((a, b) => (b.antes - b.ahora) - (a.antes - a.ahora));
   const rojos = conInv.filter((c) => c.mer < 3).sort((a, b) => a.mer - b.mer);
   return `<div class="alertas">
     ${tarjeta("inv", "Sin gasto hace 12 horas o más", AG.gasto_medible ? "Invirtieron en los últimos 30 días, pero se frenaron." : "Se puede medir desde el mediodía.", sinGasto.map((c) => fila(c, "Frenado")), AG.gasto_medible ? "Todos están gastando." : "Todavía midiendo.", !AG.gasto_medible)}
     ${tarjeta("ven", `Sin ventas hace ${ALERTA_DIAS} días o más`, "Tiendas conectadas que siguen con inversión.", sinVenta.map((c) => fila(c, c.ult_venta == null ? "Sin ventas" : `${nf0.format(num(c.dias_sin_venta))} días`)), "Todos vendieron en estos días.")}
-    ${tarjeta("mer", "Cayó el retorno (MER)", "Últimos 7 días contra los 7 anteriores: bajó 3 puntos o un 30%.", caida.map((c) => fila(c, `${merTxt(c.antes)} → ${merTxt(c.ahora)}`)), "Nadie cayó tanto.")}
+    ${tarjeta("mer", "Cayó el retorno (MER)", "Últimos 7 días contra los 7 anteriores: bajó de color, con 3 puntos o un 30% menos.", caida.map((c) => fila(c, `<span class="${merCls(c.antes)}">${merTxt(c.antes)}</span> → <span class="${merCls(c.ahora)}">${merTxt(c.ahora)}</span>`)), "Nadie bajó de color.")}
     ${tarjeta("cli", "Clientes en rojo", "MER menor a 3 en las fechas de arriba.", rojos.map((c) => fila(c, merTxt(c.mer))), "Ningún cliente en rojo.")}
   </div>`;
 }
