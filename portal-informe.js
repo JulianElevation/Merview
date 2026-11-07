@@ -358,7 +358,7 @@ function hojaCreativos(ctx) {
   if (!lista.length) return null;
   // Con menos de 3 compras la muestra es chica: esos entran solo si no alcanza con el resto.
   const firmes = lista.filter((x) => x.compras >= 3), top = (firmes.length >= 3 ? firmes : lista).slice(0, 5);
-  const fichas = top.map((x, i) => { const imgs = x.imagenes || []; return `<article class="i-pieza"><div class="i-img" data-imgs="${esc(JSON.stringify(imgs))}" data-i="0">${imgs.length ? `<img src="${esc(imgs[0])}" alt="" referrerpolicy="no-referrer">` : x.vista ? ILUSTRACION_CATALOGO : "<span>Sin vista previa</span>"}<em>${i + 1}</em><label class="inf-subir">Subir imagen<input type="file" accept="image/*"></label>${imgs.length > 1 ? `<div class="inf-toma"><button type="button" data-toma="-1" aria-label="Toma anterior">‹</button><span>1/${imgs.length}</span><button type="button" data-toma="1" aria-label="Toma siguiente">›</button></div>` : ""}</div>
+  const fichas = top.map((x, i) => { const imgs = x.imagenes || []; return `<article class="i-pieza"><div class="i-img" data-imgs="${esc(JSON.stringify(imgs))}" data-i="0">${imgs.length ? `<img src="${esc(imgs[0])}" alt="" referrerpolicy="no-referrer">` : x.vista ? ILUSTRACION_CATALOGO : "<span>Sin vista previa</span>"}<em>${i + 1}</em>${imgs.length > 1 ? `<div class="inf-toma"><button type="button" data-toma="-1" aria-label="Toma anterior">‹</button><span>1/${imgs.length}</span><button type="button" data-toma="1" aria-label="Toma siguiente">›</button></div>` : ""}</div>
     <h4>${esc(x.nombre)}</h4><dl><div><dt>Compras</dt><dd>${nf0.format(x.compras)}</dd></div><div><dt>ROAS</dt><dd>${x.spend > 0 ? merTxt(x.valor / x.spend) : "—"}</dd></div><div><dt>Inversión</dt><dd>${money(x.spend)}</dd></div><div><dt>Facturación</dt><dd>${money(x.valor)}</dd></div><div><dt>Costo x compra</dt><dd>${money(x.spend / x.compras)}</dd></div><div><dt>CTR</dt><dd>${tasa(x.clics, x.impresiones)}</dd></div></dl></article>`; }).join("");
   return { titulo: "Creativos ganadores", fuente: F_META, cuerpo: `<div class="i-piezas n${top.length}">${fichas}</div>` };
 }
@@ -428,20 +428,6 @@ function mostrarInforme(op, d) {
   document.body.classList.add("con-informe");
 }
 function cerrarInforme() { $("informe").hidden = true; $("informe").innerHTML = ""; document.body.classList.remove("con-informe"); }
-// El media buyer puede poner su propia captura. Queda solo en este documento, no se guarda en ningún lado.
-$("informe").addEventListener("change", (e) => {
-  if (!e.target.matches(".inf-subir input") || !e.target.files[0]) return;
-  const caja = e.target.closest(".i-img"), lector = new FileReader();
-  lector.onload = () => {
-    caja.querySelector("span:not(.inf-toma span)")?.remove();
-    caja.querySelector(".inf-toma")?.remove();
-    caja.querySelector(".i-cat")?.remove();
-    let img = caja.querySelector("img");
-    if (!img) { img = document.createElement("img"); img.alt = ""; caja.prepend(img); }
-    img.src = lector.result;
-  };
-  lector.readAsDataURL(e.target.files[0]);
-});
 $("informe").addEventListener("click", (e) => {
   // Cambiar la toma de una pieza. No sale en el PDF: se imprime la que quedó elegida.
   const cambiar = e.target.closest("[data-toma]");
