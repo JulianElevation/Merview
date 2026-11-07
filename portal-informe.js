@@ -439,26 +439,17 @@ async function hojaASlide(hoja) {
       items.push({ t: "img", ...R(pos), src });
       return;
     }
-    if (tag === "table") {
-      const filas = [...el.rows].map((tr) => {
-        const fondo = tr.closest("thead") ? "#F6F4FA" : null;
-        return { alto: tr.getBoundingClientRect().height * k, fondo, celdas: [...tr.cells].map((td) => {
-          const c = getComputedStyle(td), fuerte = td.querySelector("b, small");
-          const cf = fuerte ? getComputedStyle(fuerte) : c;
-          return { txt: td.innerText.trim(), ...tipografia(cf), align: c.textAlign };
-        }) };
-      });
-      items.push({ t: "tabla", ...R(caja), filas, anchos: [...el.rows[0].cells].map((td) => td.getBoundingClientRect().width * k) });
-      // Las muestras de color y las barritas de adentro van como formas encima.
-      el.querySelectorAll("i").forEach((i) => { const f = aHex(getComputedStyle(i).backgroundColor); if (f) items.push({ t: "forma", ...R(i.getBoundingClientRect()), fill: f, tipo: "RECTANGLE" }); });
-      return;
-    }
+    // Las tablas salen como textos y líneas: una tabla real de Slides impone una altura mínima por fila y se pasa de la hoja.
+    const celda = tag === "td" || tag === "th";
     const fondo = aHex(cs.backgroundColor), bordes = ["Top", "Right", "Bottom", "Left"].map((s) => parseFloat(cs[`border${s}Width`]) > 0);
     const conPieza = el.classList.contains("i-img") && el.querySelector("img, svg");
     if (el !== hoja && !conPieza) {
       const rad = parseFloat(cs.borderTopLeftRadius) || 0, total = bordes.every(Boolean);
       if (fondo || total) items.push({ t: "forma", ...R(caja), fill: fondo, line: total ? aHex(cs.borderTopColor) : null, tipo: rad >= Math.min(caja.width, caja.height) / 2 ? "ELLIPSE" : rad > 0 ? "ROUND_RECTANGLE" : "RECTANGLE" });
-      if (!total) {
+      // En una tabla, una sola línea por fila en lugar de una por celda.
+      if (celda) {
+        if (bordes[2] && el === el.parentElement.cells[0]) { const f = R(el.parentElement.getBoundingClientRect()); items.push({ t: "linea", x: f.x, y: f.y + f.h, w: f.w, h: 0.75, color: aHex(cs.borderBottomColor) }); }
+      } else if (!total) {
         const b = R(caja);
         if (bordes[0]) items.push({ t: "linea", x: b.x, y: b.y, w: b.w, h: 0.75, color: aHex(cs.borderTopColor) });
         if (bordes[2]) items.push({ t: "linea", x: b.x, y: b.y + b.h, w: b.w, h: 0.75, color: aHex(cs.borderBottomColor) });
