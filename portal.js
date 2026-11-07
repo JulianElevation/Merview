@@ -835,9 +835,9 @@ function alertas() {
   const activos = AG.clientes.filter((c) => c.con_meta && num(c.inv_30) > 0);
   const venden = AG.clientes.filter((c) => c.kind !== "leads" && num(c.tiendas_vivas) > 0 && num(c.inv_30) > 0);
   const fila = (c, val) => `<li data-id="${esc(c.id)}" tabindex="0"><span>${esc(c.name)}</span><b>${val}</b></li>`;
-  const tarjeta = (ic, titulo, ayuda, items, vacio, grave) => `<section class="alerta ${items.length ? (grave ? "mal" : "ojo") : "bien"}">
-    <h3>${icono(ic)}<span>${esc(titulo)}</span><b>${items.length}</b></h3><p>${esc(ayuda)}</p>
-    ${items.length ? `<ul class="lista">${items.join("")}</ul>` : `<p class="alerta-ok">${esc(vacio)}</p>`}</section>`;
+  const tarjeta = (ic, titulo, ayuda, items, vacio, grave, midiendo) => `<section class="alerta ${midiendo ? "" : items.length ? (grave ? "mal" : "ojo") : "bien"}">
+    <h3>${icono(ic)}<span>${esc(titulo)}</span><b>${midiendo ? "—" : items.length}</b></h3><p>${esc(ayuda)}</p>
+    ${items.length ? `<ul class="lista">${items.join("")}</ul>` : `<p class="${midiendo ? "sub" : "alerta-ok"}">${esc(vacio)}</p>`}</section>`;
   const sin8 = AG.foto_lista ? activos.filter((c) => c.sin_gasto_8h) : [];
   const sinAyer = activos.filter((c) => !(num(c.inv_ayer) > 0));
   const sinVenta = venden.filter((c) => c.ult_venta == null || num(c.dias_sin_venta) >= ALERTA_DIAS)
@@ -846,7 +846,7 @@ function alertas() {
     .map((c) => ({ ...c, cae: 1 - num(c.fac_7) / num(c.fac_7_prev) })).sort((a, b) => b.cae - a.cae);
   const bajas = AG.movimientos.filter((m) => m.tipo === "baja" && String(m.fecha).slice(0, 7) === mes);
   return `<div class="alertas">
-    ${tarjeta("inv", "Sin gasto en 8 horas", AG.foto_lista ? "La inversión no se movió desde hace 8 horas." : "Empieza a medir 8 horas después de activarse.", sin8.map((c) => fila(c, "Frenado")), AG.foto_lista ? "Todos están gastando." : "Todavía midiendo.", true)}
+    ${tarjeta("inv", "Sin gasto en 8 horas", AG.foto_lista ? "La inversión no se movió desde hace 8 horas." : "Empieza a medir 8 horas después de activarse.", sin8.map((c) => fila(c, "Frenado")), AG.foto_lista ? "Todos están gastando." : "Todavía midiendo.", true, !AG.foto_lista)}
     ${tarjeta("inv", "Sin gasto ayer", "Invirtieron en los últimos 30 días, pero ayer no.", sinAyer.map((c) => fila(c, "$ 0")), "Todos gastaron ayer.", true)}
     ${tarjeta("ven", `Sin ventas hace ${ALERTA_DIAS} días o más`, "Tiendas conectadas que siguen con inversión.", sinVenta.map((c) => fila(c, c.ult_venta == null ? "Sin ventas" : `${nf0.format(num(c.dias_sin_venta))} días`)), "Todos vendieron en estos días.", true)}
     ${tarjeta("mer", "Cayó la facturación", "Últimos 7 días contra los 7 anteriores, caída del 30% o más.", caida.map((c) => fila(c, `▼ ${Math.round(c.cae * 100)}%`)), "Nadie cayó tanto.", false)}
