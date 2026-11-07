@@ -742,7 +742,7 @@ function fuentes() {
 function vistaCliente() {
   if (!E.c || !CLI) return `<div class="cab"><h1>Elegí un cliente</h1></div><p class="sub">Usá el desplegable de arriba.</p>`;
   const c = CLI.cliente, dias = diasCompletos(CLI.dias || []);
-  const nombre = `<div class="cab"><div><h1>${esc(c.name)}</h1><p class="sub">${rangoTxt(rango())}</p></div><div class="cab-der">${fuentesCliente()}${modoCliente ? "" : `<button class="btn" id="marcaB2b" aria-pressed="${!!c.separa_b2b}" title="Separa del MER las campañas con (B2B) en el nombre">${c.separa_b2b ? "Tiene campañas B2B" : "Marcar campañas B2B"}</button><button class="btn" id="linkCliente">Link para el cliente</button>`}</div></div>`;
+  const nombre = `<div class="cab"><div><h1>${esc(c.name)}</h1><p class="sub">${rangoTxt(rango())}</p></div><div class="cab-der">${fuentesCliente()}${modoCliente ? "" : `<button class="btn" id="marcaB2b" aria-pressed="${!!c.separa_b2b}" title="Separa del MER las campañas con (B2B) en el nombre">${c.separa_b2b ? "Canal B2B abierto" : "Abrir canal B2B"}</button><button class="btn" id="linkCliente">Link para el cliente</button>`}</div></div>`;
   const spend = dias.reduce((s, d) => s + num(d.spend), 0);
   if (c.kind === "leads") {
     const msgs = dias.reduce((s, d) => s + num(d.messages), 0);
@@ -793,9 +793,34 @@ function bloqueB2b(c, spend, fac, inB2b) {
   return `<section class="bloque"><h2>Campañas B2B y de mensajes</h2>
     <p class="sub" style="padding:0 16px">Las campañas con <b>(B2B)</b> en el nombre no cuentan para el MER tienda. La facturación es la de la tienda: todas las órdenes marcadas como pagadas, por cualquier método.</p>
     <div class="kpis b2b-kpis">${kpi("Inversión B2B", money(inB2b), spend > 0 ? `${pct(inB2b, spend)}% de la inversión` : "", "", "ib2")}${kpi("Conversaciones B2B", nf0.format(conv), conv ? `${money(inB2b / conv)} cada una` : "", "", "msg")}${kpi("MER total", spend > 0 ? merTxt(fac / spend) : "—", "Con toda la inversión", "", "mer")}</div>
-    ${faltan.length && !modoCliente ? `<div class="aviso aviso-app" style="margin:0 16px 12px">${faltan.length === 1 ? "1 campaña parece" : `${faltan.length} campañas parecen`} de mensajes y no tiene${faltan.length === 1 ? "" : "n"} la etiqueta. Si no son de tienda, agregale (B2B) al nombre en Meta.</div>` : ""}
+    ${!tag.length && !modoCliente ? `<div class="aviso aviso-app" style="margin:0 16px 12px"><div><b>Falta etiquetar las campañas.</b> Ninguna tiene (B2B) en el nombre, así que el MER tienda todavía cuenta toda la inversión. Agregá (B2B) al final del nombre de cada campaña mayorista o de mensajes en Meta.</div></div>` : ""}
+    ${tag.length && faltan.length && !modoCliente ? `<div class="aviso aviso-app" style="margin:0 16px 12px">${faltan.length === 1 ? "1 campaña parece" : `${faltan.length} campañas parecen`} de mensajes y no tiene${faltan.length === 1 ? "" : "n"} la etiqueta. Si no son de tienda, agregale (B2B) al nombre en Meta.</div>` : ""}
     ${camp.length ? `<div class="tablebox"><table><thead><tr><th>Campaña</th><th>Tipo</th><th>Inversión</th><th>Conversaciones</th><th class="hm">Costo</th></tr></thead><tbody>${camp.map(fila).join("")}</tbody></table></div>` : '<p class="sub" style="padding:0 16px 14px">Trayendo las campañas. Pueden tardar hasta 5 minutos en aparecer.</p>'}</section>`;
 }
+function guardarB2b(marcado) {
+  return rpc("portal_b2b_marcar", { p_client: E.c, p_marcado: marcado }).then(() => cargar({ silencio: true })).catch((err) => { const a = $("aviso"); a.textContent = "No se pudo guardar: " + err.message; a.className = "aviso err"; a.hidden = false; });
+}
+// Va fuera de la vista: el repintado en vivo no lo cierra mientras el media buyer lo lee.
+function abrirDialogoB2b(nombre) {
+  const d = $("dlgB2b");
+  d.innerHTML = `<h2 id="dlgB2bTit">Abrir canal B2B de ${esc(nombre)}</h2>
+    <p>Separa la inversión de las campañas mayoristas o de mensajes, para que el MER tienda mida solo lo que se invierte para vender en la tienda.</p>
+    <p class="dlg-nota"><b>Abrir el canal no alcanza: el portal reconoce las campañas por el nombre.</b> Después de abrirlo, tenés que etiquetarlas en Meta.</p>
+    <ol class="dlg-pasos">
+      <li><span>1</span><div>Entrá al <b>Administrador de anuncios</b> de ${esc(nombre)}.</div></li>
+      <li><span>2</span><div>Agregá <b>(B2B)</b> al final del nombre de cada campaña mayorista o de mensajes, también de las pausadas.<code class="dlg-ej">Q4 | Interacción IG | Videos | 14-10-26 <b>(B2B)</b></code></div></li>
+      <li><span>3</span><div>Cada campaña nueva de ese tipo tiene que salir con <b>(B2B)</b> desde el primer día.</div></li>
+    </ol>
+    <p>En hasta 5 minutos el portal separa esas campañas, con todo su historial. Las que queden sin etiqueta cuentan como inversión de la tienda.</p>
+    <div class="dlg-acciones"><button type="button" class="btn" id="dlgB2bNo">Cancelar</button><button type="button" class="btn pri" id="dlgB2bSi">Abrir canal B2B</button></div>`;
+  d.showModal();
+  $("dlgB2bSi").focus();
+}
+$("dlgB2b").addEventListener("click", (e) => {
+  const d = $("dlgB2b");
+  if (e.target.id === "dlgB2bNo") return d.close();
+  if (e.target.id === "dlgB2bSi") { d.close(); guardarB2b(true); }
+});
 function fuentesCliente() {
   if (modoCliente) return "";
   const t = (CLI.tiendas || []).filter((x) => x.conectada);
@@ -995,9 +1020,9 @@ vista.addEventListener("click", (e) => {
   }
   if (e.target.id === "linkCliente") return linkCliente(false);
   if (e.target.id === "marcaB2b") {
-    const marcado = !CLI.cliente.separa_b2b;
-    if (!marcado && !confirm("¿Dejar de separar las campañas B2B de este cliente? El MER vuelve a usar toda la inversión.")) return;
-    return rpc("portal_b2b_marcar", { p_client: E.c, p_marcado: marcado }).then(() => cargar({ silencio: true })).catch((err) => { const a = $("aviso"); a.textContent = "No se pudo guardar: " + err.message; a.className = "aviso err"; a.hidden = false; });
+    if (!CLI.cliente.separa_b2b) return abrirDialogoB2b(CLI.cliente.name);
+    if (!confirm("¿Cerrar el canal B2B de este cliente? El MER vuelve a usar toda la inversión.")) return;
+    return guardarB2b(false);
   }
   const am = e.target.closest("[data-agmer]");
   if (am) { E.agMer = E.agMer === am.dataset.agmer ? null : am.dataset.agmer; return pintar(); }
